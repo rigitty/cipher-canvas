@@ -20,6 +20,18 @@ function errorDetail(res, body) {
   return `request failed (${res.status})`;
 }
 
+async function postForm(url, form) {
+  let res;
+  try {
+    res = await fetch(url, { method: "POST", body: form });
+  } catch {
+    throw new Error(
+      "cannot reach the engine server — make sure the backend is running"
+    );
+  }
+  return res;
+}
+
 export async function encodeImage({ carrier, message, passphrase, messageFile }) {
   const form = new FormData();
   form.append("carrier", carrier);
@@ -30,7 +42,7 @@ export async function encodeImage({ carrier, message, passphrase, messageFile })
     form.append("message", message);
   }
 
-  const res = await fetch(`${API_URL}/api/encode`, { method: "POST", body: form });
+  const res = await postForm(`${API_URL}/api/encode`, form);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(errorDetail(res, body));
@@ -49,7 +61,7 @@ export async function decodeImage({ carrier, passphrase }) {
   form.append("carrier", carrier);
   form.append("passphrase", passphrase);
 
-  const res = await fetch(`${API_URL}/api/decode`, { method: "POST", body: form });
+  const res = await postForm(`${API_URL}/api/decode`, form);
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorDetail(res, body));
   return body.message;

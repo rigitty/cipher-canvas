@@ -152,6 +152,20 @@ body {
   background: var(--accent);
 }
 
+.offline-banner {
+  flex-shrink: 0;
+  background: var(--accent-dim);
+  border-bottom: 1px solid var(--accent);
+  color: #ff9aa0;
+  font-size: 12px;
+  padding: 8px 14px;
+}
+
+.offline-banner code {
+  font-family: Consolas, monospace;
+  color: #fff;
+}
+
 /* ---------- content ---------- */
 
 .content {
@@ -391,6 +405,135 @@ body {
   padding: 10px 12px;
   font-size: 12px;
   word-break: break-word;
+}
+
+.hint-box {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 2px 0;
+}
+
+/* ---------- compare ---------- */
+
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.compare-caption {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.compare {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background:
+    repeating-conic-gradient(var(--panel-2) 0% 25%, #101013 0% 50%) 0 0 / 18px 18px;
+  user-select: none;
+  touch-action: none;
+  cursor: ew-resize;
+}
+
+.compare-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.compare-img.diff-static {
+  position: static;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+}
+
+.compare-clip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.compare-clip .compare-img {
+  max-width: none;
+}
+
+.compare-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  transform: translateX(-1px);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.compare-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+}
+
+.compare-grip::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 2px;
+  background: #fff;
+  box-shadow: -4px 0 0 #fff, 4px 0 0 #fff;
+}
+
+.compare-tag {
+  position: absolute;
+  bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 3px 8px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.compare-tag.left {
+  left: 8px;
+}
+
+.compare-tag.right {
+  right: 8px;
+}
+
+.ghost-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 
 /* ---------- result ---------- */

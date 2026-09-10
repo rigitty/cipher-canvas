@@ -45,6 +45,12 @@ export default function App() {
           DECODE
         </button>
       </nav>
+      {engine === "offline" && (
+        <div className="offline-banner">
+          engine server is offline — operations are disabled. start{" "}
+          <code>server.py</code> on port 8000 and relaunch.
+        </div>
+      )}
       <main className="content">
         {tab === "encode" ? <EncodePanel /> : <DecodePanel />}
       </main>

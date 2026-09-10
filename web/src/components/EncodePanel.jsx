@@ -1,16 +1,28 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "./DropZone.jsx";
+import CompareSlider from "./CompareSlider.jsx";
 import { capacityBytes, encodeImage } from "../api.js";
+import { buildDiffCanvas, objectUrlFor } from "../imageDiff.js";
 
 async function readImageSize(file) {
-  const bitmap = await createImageBitmap(file);
-  const size = { width: bitmap.width, height: bitmap.height };
-  bitmap.close();
-  return size;
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("cannot read image dimensions"));
+    };
+    img.src = url;
+  });
 }
 
 export default function EncodePanel() {
   const [carrier, setCarrier] = useState(null);
+  const [originalUrl, setOriginalUrl] = useState(null);
   const [carrierMeta, setCarrierMeta] = useState(null);
   const [source, setSource] = useState("text");
   const [message, setMessage] = useState("");
@@ -20,36 +32,67 @@ export default function EncodePanel() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [savedName, setSavedName] = useState("carrier.png");
+  const [showDiff, setShowDiff] = useState(false);
+  const [diff, setDiff] = useState(null);
+  const [diffBusy, setDiffBusy] = useState(false);
   const downloadRef = useRef(null);
 
   const capacity = useMemo(
     () =>
-      carrierMeta
-        ? capacityBytes(carrierMeta.width, carrierMeta.height)
-        : null,
+      carrierMeta ? capacityBytes(carrierMeta.width, carrierMeta.height) : null,
     [carrierMeta]
   );
 
+  useEffect(() => () => {
+    if (originalUrl) URL.revokeObjectURL(originalUrl);
+  }, [originalUrl]);
+
   const onCarrier = async (file) => {
-    const meta = await readImageSize(file);
-    setCarrier(file);
-    setCarrierMeta(meta);
-    setResult(null);
-    setError("");
+    try {
+      const meta = await readImageSize(file);
+      if (originalUrl) URL.revokeObjectURL(originalUrl);
+      setCarrier(file);
+      setOriginalUrl(await objectUrlFor(file));
+      setCarrierMeta(meta);
+      setResult(null);
+      setDiff(null);
+      setShowDiff(false);
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
-  const messageBytes = source === "file" && messageFile ? messageFile.size : new Blob([message]).size;
+  const messageBytes =
+    source === "file" && messageFile
+      ? messageFile.size
+      : new Blob([message]).size;
+
+  const overCapacity = capacity !== null && messageBytes > capacity;
+  const disabledHint = !carrier
+    ? "select a carrier image"
+    : source === "text" && message.length === 0
+    ? "type a message"
+    : source === "file" && !messageFile
+    ? "attach a message file"
+    : passphrase.length === 0
+    ? "enter a passphrase"
+    : overCapacity
+    ? `message exceeds capacity (${messageBytes} > ${capacity} bytes)`
+    : "";
 
   const canEncode =
     carrier &&
     (source === "text" ? message.length > 0 : !!messageFile) &&
     passphrase.length > 0 &&
-    (capacity === null || messageBytes <= capacity);
+    !overCapacity;
 
   const submit = async () => {
     setBusy(true);
     setError("");
     setResult(null);
+    setDiff(null);
+    setShowDiff(false);
     try {
       const res = await encodeImage({
         carrier,
@@ -67,6 +110,23 @@ export default function EncodePanel() {
     }
   };
 
+  const toggleDiff = async () => {
+    if (diff) {
+      setShowDiff(!showDiff);
+      return;
+    }
+    setDiffBusy(true);
+    try {
+      const { canvas, changed } = await buildDiffCanvas(originalUrl, result.url);
+      setDiff({ url: canvas.toDataURL("image/png"), changed });
+      setShowDiff(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDiffBusy(false);
+    }
+  };
+
   return (
     <div className="panel">
       <div className="panel-grid">
@@ -79,7 +139,7 @@ export default function EncodePanel() {
               <span>
                 {carrierMeta.width} &times; {carrierMeta.height}
               </span>
-              <span className={messageBytes > capacity ? "meta-warn" : "meta-ok"}>
+              <span className={overCapacity ? "meta-warn" : "meta-ok"}>
                 capacity {capacity} bytes
               </span>
             </div>
@@ -161,6 +221,7 @@ export default function EncodePanel() {
         >
           {busy ? "ENCODING..." : "ENCODE IMAGE"}
         </button>
+        {!busy && disabledHint && <div className="hint-box">{disabledHint}</div>}
       </section>
 
       {error && <div className="error-box">{error}</div>}
@@ -180,8 +241,8 @@ export default function EncodePanel() {
                 <span>{Math.floor(result.bits / 8)}</span>
               </p>
               <p className="result-note">
-                The output looks identical to the source. Only the least significant bits
-                were modified.
+                The output looks identical to the source. Only the least significant
+                bits were modified.
               </p>
               <input
                 type="text"
@@ -199,6 +260,37 @@ export default function EncodePanel() {
               </a>
             </div>
           </div>
+
+          <h2 className="section-title">COMPARE</h2>
+          <div className="compare-toolbar">
+            <span className="compare-caption">
+              {showDiff
+                ? `${diff.changed} pixels modified — scattered by PRNG distribution`
+                : "Drag the slider — original vs encoded"}
+            </span>
+            <button
+              type="button"
+              className={`ghost-btn ${showDiff ? "active" : ""}`}
+              onClick={toggleDiff}
+              disabled={diffBusy}
+            >
+              {diffBusy
+                ? "SCANNING..."
+                : showDiff
+                ? "HIDE HIGHLIGHTS"
+                : "HIGHLIGHT CHANGED PIXELS"}
+            </button>
+          </div>
+          {showDiff && diff ? (
+            <img className="compare-img diff-static" src={diff.url} alt="changed pixels" />
+          ) : (
+            <CompareSlider
+              leftUrl={originalUrl}
+              rightUrl={result.url}
+              leftLabel="ORIGINAL"
+              rightLabel="ENCODED"
+            />
+          )}
         </section>
       )}
     </div>

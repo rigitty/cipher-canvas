@@ -18,6 +18,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Capacity-Bytes", "X-Bits-Written"],
 )
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
