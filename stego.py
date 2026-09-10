@@ -1,0 +1,125 @@
+from PIL import Image
+
+import crypto
+import lsb
+import prng
+
+MAGIC = b"CSGA"
+MAGIC_LEN = 4
+LENGTH_SIZE = 4
+HEADER_SIZE = MAGIC_LEN + LENGTH_SIZE
+
+
+def bytes_to_bits(data: bytes) -> list[int]:
+    bits: list[int] = []
+    for byte in data:
+        for i in range(8):
+            bits.append((byte >> i) & 0x01)
+    return bits
+
+
+def bits_to_bytes(bits: list[int]) -> bytes:
+    out = bytearray()
+    for i in range(0, len(bits), 8):
+        byte = 0
+        for j in range(8):
+            byte |= bits[i + j] << j
+        out.append(byte)
+    return bytes(out)
+
+
+def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -> int:
+    sealed = crypto.seal(passphrase, message.encode("utf-8"))
+    payload = MAGIC + len(sealed).to_bytes(LENGTH_SIZE, "big") + sealed
+    bits = bytes_to_bits(payload)
+
+    image = Image.open(carrier_path).convert("RGB")
+    pixels = list(image.get_flattened_data())
+    slot_count = len(pixels) * 3
+
+    if len(bits) > slot_count:
+        raise ValueError(
+            f"payload too large: {len(bits)} bits > {slot_count} available slots"
+        )
+
+    order = prng.build_permutation(prng.derive_seed(passphrase), slot_count)
+
+    for i, bit in enumerate(bits):
+        slot = order[i]
+        pixel_index = slot // 3
+        channel = slot % 3
+        r, g, b = pixels[pixel_index]
+        new_value = lsb.embed_bit((r, g, b)[channel], bit)
+        if channel == 0:
+            pixels[pixel_index] = (new_value, g, b)
+        elif channel == 1:
+            pixels[pixel_index] = (r, new_value, b)
+        else:
+            pixels[pixel_index] = (r, g, new_value)
+
+    image.putdata(pixels)
+    image.save(output_path)
+    print(f"embedded {len(bits)} bits ({len(bits) // 8} bytes) into {slot_count} slots")
+    return len(bits)
+
+
+def decode(passphrase: str, carrier_path: str) -> str:
+    image = Image.open(carrier_path).convert("RGB")
+    pixels = list(image.get_flattened_data())
+    slot_count = len(pixels) * 3
+
+    order = prng.build_permutation(prng.derive_seed(passphrase), slot_count)
+    bits = [0] * slot_count
+    for i, slot in enumerate(order):
+        pixel_index = slot // 3
+        channel = slot % 3
+        bits[i] = lsb.extract_bit(pixels[pixel_index][channel])
+
+    header = bits_to_bytes(bits[: HEADER_SIZE * 8])
+    if header[:MAGIC_LEN] != MAGIC:
+        raise ValueError(
+            "header magic not found (wrong passphrase or image is not a carrier)"
+        )
+
+    sealed_length = int.from_bytes(header[MAGIC_LEN:], "big")
+    sealed = bits_to_bytes(
+        bits[HEADER_SIZE * 8 : HEADER_SIZE * 8 + sealed_length * 8]
+    )
+    return crypto.open_sealed(passphrase, sealed).decode("utf-8")
+
+
+def demo() -> None:
+    message = "top secret: meet at the pixel at midnight"
+    passphrase = "correct horse battery staple"
+
+    encode(passphrase, message, "sample.png", "carrier.png")
+    recovered = decode(passphrase, "carrier.png")
+    print(f"recovered message: {recovered}")
+    print(f"round-trip ok     : {recovered == message}")
+
+    carrier = Image.open("sample.png")
+    output = Image.open("carrier.png")
+    changed = sum(
+        1
+        for a, b in zip(
+            carrier.get_flattened_data(), output.get_flattened_data()
+        )
+        if a != b
+    )
+    print(f"changed pixels    : {changed}/{carrier.width * carrier.height}")
+
+    try:
+        decode("wrong passphrase", "carrier.png")
+        print("wrong pass        : ACCEPTED (bug!)")
+    except Exception as exc:
+        print(f"wrong pass        : rejected ({type(exc).__name__})")
+
+    try:
+        decode(passphrase, "sample.png")
+        print("non-carrier       : ACCEPTED (bug!)")
+    except Exception as exc:
+        print(f"non-carrier       : rejected ({type(exc).__name__})")
+
+
+if __name__ == "__main__":
+    demo()
