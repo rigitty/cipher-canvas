@@ -28,18 +28,12 @@ def bits_to_bytes(bits: list[int]) -> bytes:
     return bytes(out)
 
 
-def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -> int:
+def _embed(passphrase: str, message: str, image: Image.Image) -> tuple[Image.Image, int]:
     sealed = crypto.seal(passphrase, message.encode("utf-8"))
     payload = MAGIC + len(sealed).to_bytes(LENGTH_SIZE, "big") + sealed
     bits = bytes_to_bits(payload)
 
-    if carrier_path.lower().endswith((".jpg", ".jpeg")):
-        print(
-            "warning: JPEG is lossy; its LSBs are already corrupted by compression, "
-            "re-encoding will destroy embedded data"
-        )
-
-    image = Image.open(carrier_path).convert("RGB")
+    image = image.convert("RGB")
     pixels = list(image.get_flattened_data())
     slot_count = len(pixels) * 3
 
@@ -64,13 +58,25 @@ def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -
             pixels[pixel_index] = (r, g, new_value)
 
     image.putdata(pixels)
-    image.save(output_path)
-    print(f"embedded {len(bits)} bits ({len(bits) // 8} bytes) into {slot_count} slots")
-    return len(bits)
+    return image, len(bits)
 
 
-def decode(passphrase: str, carrier_path: str) -> str:
-    image = Image.open(carrier_path).convert("RGB")
+def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -> int:
+    if carrier_path.lower().endswith((".jpg", ".jpeg")):
+        print(
+            "warning: JPEG is lossy; its LSBs are already corrupted by compression, "
+            "re-encoding will destroy embedded data"
+        )
+
+    image = Image.open(carrier_path)
+    output_image, bits = _embed(passphrase, message, image)
+    output_image.save(output_path)
+    print(f"embedded {bits} bits ({bits // 8} bytes) into {image.width * image.height * 3} slots")
+    return bits
+
+
+def _extract(passphrase: str, image: Image.Image) -> str:
+    image = image.convert("RGB")
     pixels = list(image.get_flattened_data())
     slot_count = len(pixels) * 3
 
@@ -92,6 +98,10 @@ def decode(passphrase: str, carrier_path: str) -> str:
         bits[HEADER_SIZE * 8 : HEADER_SIZE * 8 + sealed_length * 8]
     )
     return crypto.open_sealed(passphrase, sealed).decode("utf-8")
+
+
+def decode(passphrase: str, carrier_path: str) -> str:
+    return _extract(passphrase, Image.open(carrier_path))
 
 
 def demo() -> None:

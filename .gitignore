@@ -65,6 +65,15 @@ payload*.txt
 carrier*
 output*
 
+# Tauri / Web (Vite + React)
+web/node_modules/
+web/dist/
+web/src-tauri/target/
+web/src-tauri/gen/
+!web/src-tauri/icons/*.png
+!web/src-tauri/icons/*.ico
+!web/src-tauri/icons/*.icns
+
 # Logs
 *.log
 npm-debug.log*
