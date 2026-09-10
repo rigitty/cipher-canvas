@@ -33,6 +33,12 @@ def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -
     payload = MAGIC + len(sealed).to_bytes(LENGTH_SIZE, "big") + sealed
     bits = bytes_to_bits(payload)
 
+    if carrier_path.lower().endswith((".jpg", ".jpeg")):
+        print(
+            "warning: JPEG is lossy; its LSBs are already corrupted by compression, "
+            "re-encoding will destroy embedded data"
+        )
+
     image = Image.open(carrier_path).convert("RGB")
     pixels = list(image.get_flattened_data())
     slot_count = len(pixels) * 3
