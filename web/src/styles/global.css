@@ -13,6 +13,8 @@
   --warn: #e67e22;
   --titlebar-h: 38px;
   --statusbar-h: 26px;
+  --progress-start: #3498db;
+  --progress-end: #e50914;
 }
 
 * {
@@ -593,7 +595,7 @@ body {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #3498db, #e50914);
+  background: linear-gradient(90deg, var(--progress-start), var(--progress-end));
   border-radius: 3px;
   transition: width 0.15s ease-out;
   box-shadow: 0 0 8px rgba(229, 9, 20, 0.4);
