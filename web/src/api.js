@@ -14,6 +14,17 @@ export function capacityBytes(width, height, filenameLength = 0, bitDepth = 1) {
   return Math.max(0, payloadBytes - AES_OVERHEAD - envelope);
 }
 
+export function capacityRobustBytes(width, height) {
+  const bh = Math.floor(height / 8);
+  const bw = Math.floor(width / 8);
+  const totalBlocks = bh * bw;
+  const availBlocks = totalBlocks - 112;
+  if (availBlocks <= 0) return 0;
+  const maxEccBytes = Math.floor(availBlocks / 8);
+  const overhead = 32 + 4 + 4 + 16 + 12 + 16;
+  return Math.max(0, maxEccBytes - overhead);
+}
+
 export async function healthCheck() {
   const res = await fetch(`${API_URL}/api/health`, { signal: AbortSignal.timeout(3000) });
   if (!res.ok) throw new Error(`engine health check failed (${res.status})`);
@@ -38,11 +49,12 @@ async function postForm(url, form) {
   return res;
 }
 
-export async function encodeImage({ carrier, message, passphrase, messageFile, bitDepth = 1 }) {
+export async function encodeImage({ carrier, message, passphrase, messageFile, bitDepth = 1, mode = "stealth" }) {
   const form = new FormData();
   form.append("carrier", carrier);
   form.append("passphrase", passphrase);
   form.append("bit_depth", String(bitDepth));
+  form.append("mode", mode);
   if (messageFile) {
     form.append("message_file", messageFile);
   } else {
@@ -60,7 +72,8 @@ export async function encodeImage({ carrier, message, passphrase, messageFile, b
     url: URL.createObjectURL(blob),
     capacity: Number(res.headers.get("X-Capacity-Bytes")),
     bits: Number(res.headers.get("X-Bits-Written")),
-    bitDepth: Number(res.headers.get("X-Bit-Depth")) || bitDepth,
+    bitDepth: res.headers.get("X-Bit-Depth") || bitDepth,
+    mode: res.headers.get("X-Mode") || mode,
   };
 }
 

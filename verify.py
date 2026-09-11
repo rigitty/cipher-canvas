@@ -160,10 +160,38 @@ def test_alpha_preservation() -> None:
     print("PASS alpha preservation: transparency untouched and preserved in RGBA PNG")
 
 
+def test_robust_jpeg_resilience() -> None:
+    import io
+    import robust
+
+    carrier_path = "samples/logo.jpg"
+    out_path = "_verify_robust_out.png"
+    secret_msg = "Secret coordinates: 41.0082° N, 28.9784° E. WhatsApp resilience verified."
+
+    robust.encode(PASSPHRASE, secret_msg, carrier_path, out_path)
+
+    # 1. Direct decode (lossless)
+    recovered_lossless = robust.decode(PASSPHRASE, out_path)
+    assert recovered_lossless == secret_msg, "Robust lossless decode failed"
+
+    # 2. Simulated WhatsApp / JPEG lossy compression (Quality 70)
+    with Image.open(out_path) as im:
+        jpeg_buf = io.BytesIO()
+        im.save(jpeg_buf, format="JPEG", quality=70)
+        jpeg_buf.seek(0)
+        jpeg_path = "_verify_robust_q70.jpg"
+        with open(jpeg_path, "wb") as f:
+            f.write(jpeg_buf.getvalue())
+
+    recovered_lossy = robust.decode(PASSPHRASE, jpeg_path)
+    assert recovered_lossy == secret_msg, "Robust lossy JPEG Q70 decode failed"
+    print("PASS robust mode: survives JPEG Q70 / WhatsApp lossy compression roundtrip")
+
+
 def cleanup_temp_files() -> None:
     import glob
     import os
-    for pattern in ["_verify_*.png", "_tiny.png", "_never.png", "_out.png"]:
+    for pattern in ["_verify_*.png", "_verify_*.jpg", "_tiny.png", "_never.png", "_out.png"]:
         for f in glob.glob(pattern):
             try:
                 os.remove(f)
@@ -184,6 +212,7 @@ if __name__ == "__main__":
         test_hide_image()
         test_bit_depths()
         test_alpha_preservation()
+        test_robust_jpeg_resilience()
         print("ALL EDGE-CASE TESTS PASSED")
     finally:
         cleanup_temp_files()

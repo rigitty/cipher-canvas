@@ -1091,3 +1091,109 @@ body {
 .download-link:hover {
   text-decoration: underline;
 }
+
+/* ---------- steganography mode selector ---------- */
+
+.mode-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  text-align: left;
+}
+
+.mode-card:hover {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.mode-card.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.15);
+}
+
+.mode-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mode-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text);
+}
+
+.mode-card.active .mode-title {
+  color: #ff9aa0;
+}
+
+.mode-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--border);
+  color: var(--muted);
+}
+
+.mode-card.active .mode-tag {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mode-desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.robust-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(52, 152, 219, 0.08);
+  border: 1px solid rgba(52, 152, 219, 0.3);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.robust-info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #3498db;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.robust-info-text {
+  font-size: 11px;
+  color: #a0c4df;
+  line-height: 1.45;
+}
+
+.robust-tip-box {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #b0d4ef;
+  border-left: 2px solid #3498db;
+}
