@@ -128,6 +128,68 @@ export async function decodeImage({ carrier, passphrase }) {
   };
 }
 
+export async function encodeSharded({ carriers, message, passphrase, messageFile, bitDepth = 1 }) {
+  const form = new FormData();
+  for (const carrier of carriers) {
+    form.append("carriers", carrier);
+  }
+  form.append("passphrase", passphrase);
+  form.append("bit_depth", String(bitDepth));
+  if (messageFile) {
+    form.append("message_file", messageFile);
+  } else {
+    form.append("message", message);
+  }
+
+  const res = await postForm(`${API_URL}/api/encode/shard`, form);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(errorDetail(res, body));
+  }
+  const blob = await res.blob();
+  const rawName = res.headers.get("X-Filename");
+  const filename = rawName ? decodeURIComponent(rawName) : "sharded_payload.zip";
+  return {
+    blob,
+    url: URL.createObjectURL(blob),
+    filename,
+    shardCount: Number(res.headers.get("X-Shard-Count")) || carriers.length,
+    bitDepth: res.headers.get("X-Bit-Depth") || bitDepth,
+  };
+}
+
+export async function decodeSharded({ shards, passphrase }) {
+  const form = new FormData();
+  for (const shard of shards) {
+    form.append("shards", shard);
+  }
+  form.append("passphrase", passphrase);
+
+  const res = await postForm(`${API_URL}/api/decode/shard`, form);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(errorDetail(res, body));
+  }
+  const blob = await res.blob();
+  const rawName = res.headers.get("X-Filename");
+  const filename = rawName ? decodeURIComponent(rawName) : "extracted.bin";
+  let text = null;
+  const isText = blob.type.startsWith("text/") || /\.(txt|md|log|json|csv|py|js|ts|html?)$/i.test(filename);
+  if (isText) {
+    text = await blob.text();
+  }
+  return {
+    blob,
+    url: URL.createObjectURL(blob),
+    filename,
+    type: blob.type,
+    size: blob.size,
+    text,
+    groupId: res.headers.get("X-Group-ID"),
+    shardCount: Number(res.headers.get("X-Shard-Count")),
+  };
+}
+
 export async function inspectImage(file) {
   const form = new FormData();
   form.append("image", file);

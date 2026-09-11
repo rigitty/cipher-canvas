@@ -3,6 +3,7 @@ import DropZone from "./DropZone.jsx";
 import CompareSlider from "./CompareSlider.jsx";
 import EntropyMeter from "./EntropyMeter.jsx";
 import ProgressBar from "./ProgressBar.jsx";
+import ShardPanel from "./ShardPanel.jsx";
 import {
   capacityBytes,
   capacityRobustBytes,
@@ -29,6 +30,7 @@ async function readImageSize(file) {
 }
 
 export default function EncodePanel() {
+  const [carrierType, setCarrierType] = useState("single"); // "single" | "multi"
   const [carrier, setCarrier] = useState(null);
   const [originalUrl, setOriginalUrl] = useState(null);
   const [carrierMeta, setCarrierMeta] = useState(null);
@@ -202,36 +204,57 @@ export default function EncodePanel() {
 
   return (
     <div className="panel">
-      <section className="panel-section">
-        <h2 className="section-title">TRANSMISSION MODE</h2>
-        <div className="mode-selector">
-          <div
-            className={`mode-card ${mode === "stealth" ? "active" : ""}`}
-            onClick={() => setMode("stealth")}
-          >
-            <div className="mode-card-header">
-              <span className="mode-title">LSB STEALTH MODE</span>
-              <span className="mode-tag">MAX CAPACITY</span>
-            </div>
-            <p className="mode-desc">
-              High capacity for files &amp; text. Best for lossless transfer (PNG / Document mode).
-            </p>
-          </div>
+      <div className="segmented shard-nav-tabs" style={{ marginBottom: "16px" }}>
+        <button
+          type="button"
+          className={carrierType === "single" ? "active" : ""}
+          onClick={() => setCarrierType("single")}
+        >
+          SINGLE CARRIER
+        </button>
+        <button
+          type="button"
+          className={carrierType === "multi" ? "active" : ""}
+          onClick={() => setCarrierType("multi")}
+        >
+          MULTI-IMAGE SHARDING
+        </button>
+      </div>
 
-          <div
-            className={`mode-card ${mode === "robust" ? "active" : ""}`}
-            onClick={() => setMode("robust")}
-          >
-            <div className="mode-card-header">
-              <span className="mode-title">ROBUST MODE</span>
-              <span className="mode-tag">WHATSAPP / JPEG</span>
+      {carrierType === "multi" ? (
+        <ShardPanel defaultSubTab="encode" />
+      ) : (
+        <>
+          <section className="panel-section">
+            <h2 className="section-title">TRANSMISSION MODE</h2>
+            <div className="mode-selector">
+              <div
+                className={`mode-card ${mode === "stealth" ? "active" : ""}`}
+                onClick={() => setMode("stealth")}
+              >
+                <div className="mode-card-header">
+                  <span className="mode-title">LSB STEALTH MODE</span>
+                  <span className="mode-tag">MAX CAPACITY</span>
+                </div>
+                <p className="mode-desc">
+                  High capacity for files &amp; text. Best for lossless transfer (PNG / Document mode).
+                </p>
+              </div>
+
+              <div
+                className={`mode-card ${mode === "robust" ? "active" : ""}`}
+                onClick={() => setMode("robust")}
+              >
+                <div className="mode-card-header">
+                  <span className="mode-title">ROBUST MODE</span>
+                  <span className="mode-tag">WHATSAPP / JPEG</span>
+                </div>
+                <p className="mode-desc">
+                  Protects messages against photo compression.
+                </p>
+              </div>
             </div>
-            <p className="mode-desc">
-              Protects messages against photo compression.
-            </p>
-          </div>
-        </div>
-      </section>
+          </section>
 
       <div className="panel-grid">
         <section className="panel-section">
@@ -470,6 +493,8 @@ export default function EncodePanel() {
             />
           )}
         </section>
+      )}
+      </>
       )}
     </div>
   );

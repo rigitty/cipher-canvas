@@ -188,6 +188,34 @@ def test_robust_jpeg_resilience() -> None:
     print("PASS robust mode: survives JPEG Q70 / WhatsApp lossy compression roundtrip")
 
 
+def test_multi_image_sharding() -> None:
+    import sharding
+    img1 = Image.new("RGB", (150, 150), (20, 50, 80))
+    img2 = Image.new("RGB", (200, 200), (80, 120, 160))
+    img3 = Image.new("RGB", (180, 180), (140, 90, 40))
+
+    payload = b"Top Secret Payload Split Across Three Independent Images with AES-GCM and CCSH headers!"
+    stego_shards = sharding.shard_payload(
+        PASSPHRASE, "classified_intel.txt", payload, [img1, img2, img3], bit_depth=2
+    )
+    assert len(stego_shards) == 3
+
+    # Reverse order test: assemble should automatically sort shards by shard_index
+    shuffled_shards = [stego_shards[2], stego_shards[0], stego_shards[1]]
+    filename, recovered_bytes, report = sharding.assemble_shards(PASSPHRASE, shuffled_shards)
+
+    assert filename == "classified_intel.txt"
+    assert recovered_bytes == payload
+    assert report["total_shards"] == 3
+    print("PASS multi-image sharding: 3-carrier split, shuffled assembly & CRC integrity verified")
+
+    # Missing shard test
+    def try_incomplete():
+        sharding.assemble_shards(PASSPHRASE, [stego_shards[0], stego_shards[2]])
+
+    expect_error("incomplete shard set rejected with missing shard info", try_incomplete)
+
+
 def cleanup_temp_files() -> None:
     import glob
     import os
@@ -213,6 +241,7 @@ if __name__ == "__main__":
         test_bit_depths()
         test_alpha_preservation()
         test_robust_jpeg_resilience()
-        print("ALL EDGE-CASE TESTS PASSED")
+        test_multi_image_sharding()
+        print("ALL EDGE-CASE AND SHARDING TESTS PASSED")
     finally:
         cleanup_temp_files()

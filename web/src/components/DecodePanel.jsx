@@ -2,9 +2,11 @@ import { useRef, useState } from "react";
 import DropZone from "./DropZone.jsx";
 import EntropyMeter from "./EntropyMeter.jsx";
 import ProgressBar from "./ProgressBar.jsx";
+import ShardPanel from "./ShardPanel.jsx";
 import { decodeImage, isTauri, saveFileNative } from "../api.js";
 
 export default function DecodePanel() {
+  const [carrierType, setCarrierType] = useState("single"); // "single" | "multi"
   const [carrier, setCarrier] = useState(null);
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,9 +75,30 @@ export default function DecodePanel() {
 
   return (
     <div className="panel">
-      <div className="panel-grid">
-        <section className="panel-section">
-          <h2 className="section-title">CARRIER IMAGE</h2>
+      <div className="segmented shard-nav-tabs" style={{ marginBottom: "16px" }}>
+        <button
+          type="button"
+          className={carrierType === "single" ? "active" : ""}
+          onClick={() => setCarrierType("single")}
+        >
+          SINGLE CARRIER
+        </button>
+        <button
+          type="button"
+          className={carrierType === "multi" ? "active" : ""}
+          onClick={() => setCarrierType("multi")}
+        >
+          MULTI-IMAGE ASSEMBLE
+        </button>
+      </div>
+
+      {carrierType === "multi" ? (
+        <ShardPanel defaultSubTab="decode" />
+      ) : (
+        <>
+          <div className="panel-grid">
+            <section className="panel-section">
+              <h2 className="section-title">CARRIER IMAGE</h2>
           <DropZone
             file={carrier}
             onFile={(f) => {
@@ -178,6 +201,8 @@ export default function DecodePanel() {
           )}
           {saveNote && <div className="hint-box">{saveNote}</div>}
         </section>
+      )}
+      </>
       )}
     </div>
   );

@@ -12,7 +12,10 @@ from PIL import Image
 import capacity
 import crypto
 import detection
+import robust
+import sharding
 import stego
+import zipfile
 
 app = FastAPI(title="Cipher Canvas Engine", version="1.0.0")
 
@@ -22,7 +25,14 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Capacity-Bytes", "X-Bits-Written", "X-Filename", "X-Bit-Depth"],
+    expose_headers=[
+        "X-Capacity-Bytes",
+        "X-Bits-Written",
+        "X-Filename",
+        "X-Bit-Depth",
+        "X-Shard-Count",
+        "X-Group-ID",
+    ],
 )
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -132,6 +142,99 @@ def encode(
     )
 
 
+@app.post("/api/encode/shard")
+def encode_shard(
+    carriers: list[UploadFile] = File(...),
+    passphrase: str = Form(...),
+    message: str = Form(""),
+    message_file: UploadFile | None = File(None),
+    bit_depth: int = Form(1),
+) -> Response:
+    if len(carriers) < 2:
+        raise HTTPException(
+            status_code=400, detail="Multi-image sharding requires at least 2 carrier images."
+        )
+
+    images = []
+    for c in carriers:
+        c_bytes = c.file.read()
+        if len(c_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=400, detail=f"Image {c.filename} exceeds 50MB limit.")
+        images.append(_load_image(c_bytes))
+
+    bit_depth = max(1, min(4, int(bit_depth)))
+
+    if message_file is not None:
+        file_data = message_file.file.read()
+        filename = message_file.filename or "file.bin"
+    else:
+        file_data = message.encode("utf-8")
+        filename = "message.txt"
+
+    try:
+        stego_images = sharding.shard_payload(
+            passphrase=passphrase,
+            filename=filename,
+            payload_data=file_data,
+            carrier_images=images,
+            bit_depth=bit_depth,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Sharding failed: {exc}")
+
+    # Package all stego images into a ZIP archive
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for idx, s_img in enumerate(stego_images):
+            img_buf = io.BytesIO()
+            s_img.save(img_buf, "PNG")
+            zf.writestr(f"shard_{idx+1}_of_{len(stego_images)}.png", img_buf.getvalue())
+
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "X-Filename": quote(f"sharded_{filename}.zip"),
+            "X-Shard-Count": str(len(stego_images)),
+            "X-Bit-Depth": str(bit_depth),
+        },
+    )
+
+
+@app.post("/api/decode/shard")
+def decode_shard(
+    shards: list[UploadFile] = File(...),
+    passphrase: str = Form(...),
+) -> Response:
+    if not shards:
+        raise HTTPException(status_code=400, detail="No shard images uploaded.")
+
+    images = []
+    for s in shards:
+        s_bytes = s.file.read()
+        images.append(_load_image(s_bytes))
+
+    try:
+        filename, file_data, report = sharding.assemble_shards(passphrase, images)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Sharding reassembly failed: {exc}")
+
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return Response(
+        content=file_data,
+        media_type=media_type,
+        headers={
+            "X-Filename": quote(filename),
+            "X-Group-ID": report["group_id"],
+            "X-Shard-Count": str(report["total_shards"]),
+        },
+    )
+
+
 @app.post("/api/decode")
 def decode(
     carrier: UploadFile = File(...),
@@ -140,7 +243,20 @@ def decode(
     data = carrier.file.read()
     image = _load_image(data)
 
-    # 1. First try standard Stealth LSB decode
+    # 1. First check if this is an individual shard from a multi-image set
+    shard_meta = sharding.inspect_shard(passphrase, image)
+    if shard_meta is not None:
+        # It's a shard, inform user that other parts are required
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"This image is Shard #{shard_meta['shard_index'] + 1} of a {shard_meta['total_shards']}-part Sharded Carrier "
+                f"(Group ID: {shard_meta['group_id'][:8]}...). "
+                f"Please switch to Multi-Image Shard Decode tab to assemble all {shard_meta['total_shards']} parts."
+            ),
+        )
+
+    # 2. Standard Stealth LSB decode
     try:
         payload = stego._extract_bytes(passphrase, image)
         filename, file_data = stego.unpack_payload(payload)
@@ -151,7 +267,7 @@ def decode(
             headers={"X-Filename": quote(filename), "X-Mode": "stealth"},
         )
     except Exception:
-        # 2. If LSB fails, automatically try Robust DCT + Reed-Solomon decode!
+        # 3. If LSB fails, automatically try Robust DCT + Reed-Solomon decode!
         try:
             recovered_text = robust.decode_image(passphrase, image)
             return Response(
@@ -162,7 +278,7 @@ def decode(
         except Exception:
             raise HTTPException(
                 status_code=400,
-                detail="Payload not found or invalid passphrase (checked both LSB Stealth and Robust DCT modes)",
+                detail="Payload not found or invalid passphrase (checked LSB Stealth, Robust DCT, and Shards)",
             )
 
 
