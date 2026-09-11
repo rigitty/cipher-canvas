@@ -227,7 +227,7 @@ export default function EncodePanel() {
               <span className="mode-tag">WHATSAPP / JPEG</span>
             </div>
             <p className="mode-desc">
-              Protects messages against photo compression (WhatsApp, social media).
+              Protects messages against photo compression.
             </p>
           </div>
         </div>

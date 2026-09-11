@@ -157,13 +157,6 @@ export default function InspectPanel() {
                   />
                   <div className="bit-plane-legend">
                     <span>LSB bit plane map — reveals hidden patterns if unscattered</span>
-                    <a
-                      href={result.lsb_preview}
-                      download="lsb-bit-plane.png"
-                      className="download-link"
-                    >
-                      Export Map
-                    </a>
                   </div>
                 </div>
               ) : (

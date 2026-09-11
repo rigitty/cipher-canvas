@@ -19,12 +19,46 @@ fn project_root() -> PathBuf {
 
 fn spawn_backend() -> Option<Child> {
     let parent_pid = std::process::id();
+    let root = project_root();
+
+    // 1. Try standalone compiled engine executable
+    let exe_candidates = [
+        root.join("dist").join("cipher-engine.exe"),
+        root.join("cipher-engine.exe"),
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("cipher-engine.exe")))
+            .unwrap_or_default(),
+    ];
+
+    for exe in exe_candidates {
+        if exe.exists() {
+            let mut command = Command::new(&exe);
+            command
+                .arg("--parent-pid")
+                .arg(parent_pid.to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(HIDE_WINDOW_FLAG);
+            }
+
+            if let Ok(child) = command.spawn() {
+                return Some(child);
+            }
+        }
+    }
+
+    // 2. Dev mode fallback: run via python interpreter
     let mut command = Command::new("python");
     command
         .arg("server.py")
         .arg("--parent-pid")
         .arg(parent_pid.to_string())
-        .current_dir(project_root())
+        .current_dir(root)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
