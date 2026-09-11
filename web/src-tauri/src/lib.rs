@@ -18,9 +18,12 @@ fn project_root() -> PathBuf {
 }
 
 fn spawn_backend() -> Option<Child> {
+    let parent_pid = std::process::id();
     let mut command = Command::new("python");
     command
         .arg("server.py")
+        .arg("--parent-pid")
+        .arg(parent_pid.to_string())
         .current_dir(project_root())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -83,8 +86,8 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building the Cipher Canvas application")
-        .run(|app_handle, event| {
-            if let RunEvent::Exit = event {
+        .run(|app_handle, event| match event {
+            RunEvent::Exit | RunEvent::ExitRequested { .. } => {
                 let backend = app_handle.state::<BackendState>();
                 let mut guard = backend.0.lock().unwrap();
                 if let Some(mut child) = guard.take() {
@@ -92,5 +95,6 @@ pub fn run() {
                     let _ = child.wait();
                 }
             }
+            _ => {}
         });
 }

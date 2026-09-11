@@ -180,11 +180,47 @@ def inspect(image: UploadFile = File(...)) -> JSONResponse:
         raise HTTPException(status_code=500, detail=f"steganalysis failed: {exc}")
 
 
+def _watch_parent_process(parent_pid: int | None = None) -> None:
+    """Background watchdog thread that ensures server exits when parent GUI process closes."""
+    import ctypes
+    import os
+    import threading
+    import time
+
+    pid = parent_pid or os.getppid()
+    if pid <= 1:
+        return
+
+    def _checker():
+        kernel32 = getattr(ctypes, "windll", None) and getattr(ctypes.windll, "kernel32", None)
+        if not kernel32:
+            return
+        SYNCHRONIZE = 0x00100000
+        while True:
+            time.sleep(1.5)
+            try:
+                handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+                if not handle:
+                    os._exit(0)
+                res = kernel32.WaitForSingleObject(handle, 0)
+                kernel32.CloseHandle(handle)
+                if res != 0x00000102:  # WAIT_TIMEOUT (0x102) means process is still alive
+                    os._exit(0)
+            except Exception:
+                break
+
+    thread = threading.Thread(target=_checker, daemon=True, name="ParentWatchdog")
+    thread.start()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cipher Canvas engine server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8000, type=int)
+    parser.add_argument("--parent-pid", default=None, type=int)
     args = parser.parse_args()
+
+    _watch_parent_process(args.parent_pid)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
