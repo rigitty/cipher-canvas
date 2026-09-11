@@ -57,6 +57,7 @@ __pycache__
 *.jpeg
 *.bmp
 !assets/**/*.png
+!samples/*
 *.pem
 *.key
 *.enc
