@@ -3,9 +3,12 @@ export const API_URL = "http://127.0.0.1:8000";
 export const HEADER_BYTES = 8;
 export const AES_OVERHEAD = 44;
 
-export function capacityBytes(width, height) {
+export const isTauri = () => "__TAURI_INTERNALS__" in window;
+
+export function capacityBytes(width, height, filenameLength = 0) {
   const payloadBytes = Math.floor((width * height * 3) / 8);
-  return Math.max(0, payloadBytes - HEADER_BYTES - AES_OVERHEAD);
+  const envelope = filenameLength + 1;
+  return Math.max(0, payloadBytes - HEADER_BYTES - AES_OVERHEAD - envelope);
 }
 
 export async function healthCheck() {
@@ -62,7 +65,35 @@ export async function decodeImage({ carrier, passphrase }) {
   form.append("passphrase", passphrase);
 
   const res = await postForm(`${API_URL}/api/decode`, form);
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorDetail(res, body));
-  return body.message;
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(errorDetail(res, body));
+  }
+  const blob = await res.blob();
+  const rawName = res.headers.get("X-Filename");
+  const filename = rawName ? decodeURIComponent(rawName) : "extracted.bin";
+  let text = null;
+  const isText = blob.type.startsWith("text/") || /\.(txt|md|log|json|csv|py|js|ts|html?)$/i.test(filename);
+  if (isText) {
+    text = await blob.text();
+  }
+  return {
+    blob,
+    url: URL.createObjectURL(blob),
+    filename,
+    type: blob.type,
+    size: blob.size,
+    text,
+  };
+}
+
+export async function saveFileNative(fileName, blob, filterName, filterExtensions) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return invoke("save_file", {
+    fileName,
+    data: Array.from(bytes),
+    filterName,
+    filterExtensions,
+  });
 }

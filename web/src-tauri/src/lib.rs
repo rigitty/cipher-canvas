@@ -34,10 +34,35 @@ fn spawn_backend() -> Option<Child> {
     command.spawn().ok()
 }
 
+#[tauri::command]
+async fn save_file(
+    file_name: String,
+    data: Vec<u8>,
+    filter_name: Option<String>,
+    filter_extensions: Option<Vec<String>>,
+) -> Result<String, String> {
+    let mut dialog = rfd::AsyncFileDialog::new()
+        .set_title("Save File")
+        .set_file_name(&file_name);
+    if let (Some(name), Some(extensions)) = (filter_name, filter_extensions) {
+        dialog = dialog.add_filter(&name, &extensions);
+    }
+    let handle = dialog
+        .save_file()
+        .await
+        .ok_or_else(|| "save cancelled".to_string())?;
+    handle
+        .write(&data)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(handle.path().to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(BackendState(Mutex::new(None)))
+        .invoke_handler(tauri::generate_handler![save_file])
         .setup(|app| {
             let child = spawn_backend();
             if child.is_none() {

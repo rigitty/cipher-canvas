@@ -4,10 +4,13 @@ HEADER_BYTES = stego.HEADER_SIZE
 AES_OVERHEAD = 44  # salt(16) + nonce(12) + GCM tag(16)
 
 
-def max_plaintext_bytes(width: int, height: int, channels: int = 3) -> int:
+def max_plaintext_bytes(
+    width: int, height: int, channels: int = 3, filename_length: int = 0
+) -> int:
     slots = width * height * channels
     payload_bytes = slots // 8
-    return max(0, payload_bytes - HEADER_BYTES - AES_OVERHEAD)
+    envelope = filename_length + 1
+    return max(0, payload_bytes - HEADER_BYTES - AES_OVERHEAD - envelope)
 
 
 def max_payload_bits(width: int, height: int, channels: int = 3) -> int:

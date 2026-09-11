@@ -29,6 +29,21 @@ export default function App() {
   return (
     <div className="app">
       <TitleBar />
+
+      <header className="brand-hero">
+        <div className="brand-hero-logo-wrap">
+          <img
+            src="/logo.png"
+            alt="Cipher Canvas Logo"
+            className="brand-hero-logo"
+            draggable={false}
+          />
+        </div>
+        <div className="brand-hero-info">
+          <h1 className="brand-hero-title">CIPHER CANVAS</h1>
+        </div>
+      </header>
+
       <nav className="tabbar">
         <button
           type="button"
@@ -57,8 +72,6 @@ export default function App() {
       <footer className="statusbar">
         <span className="engine-dot" data-status={engine} />
         <span>engine {engine}</span>
-        <span className="statusbar-sep" />
-        <span>AES-256-GCM &middot; LSB &middot; PRNG</span>
       </footer>
     </div>
   );

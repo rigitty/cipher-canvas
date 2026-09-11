@@ -73,6 +73,8 @@ web/src-tauri/gen/
 !web/src-tauri/icons/*.png
 !web/src-tauri/icons/*.ico
 !web/src-tauri/icons/*.icns
+!web/public/logo.png
+!web/public/logo-title.png
 
 # Logs
 *.log

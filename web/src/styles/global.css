@@ -57,14 +57,27 @@ body {
 .titlebar-brand {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   padding: 0 12px;
   height: 100%;
-  cursor: default;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.titlebar-brand:hover {
+  opacity: 0.85;
 }
 
 .brand-icon {
   display: block;
+}
+
+.brand-logo {
+  height: 24px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(229, 9, 20, 0.45));
 }
 
 .brand-name {
@@ -110,6 +123,67 @@ body {
 .titlebar-btn:last-child:hover {
   background: var(--accent);
   color: #fff;
+}
+
+/* ---------- brand hero banner ---------- */
+
+.brand-hero {
+  background: linear-gradient(180deg, #131317 0%, #0d0d10 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.brand-hero::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: -40px;
+  width: 260px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(229, 9, 20, 0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.brand-hero-logo-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-hero-logo {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 20px rgba(229, 9, 20, 0.55));
+  transition: filter 0.25s ease, transform 0.25s ease;
+}
+
+.brand-hero-logo:hover {
+  transform: scale(1.04);
+  filter: drop-shadow(0 0 28px rgba(229, 9, 20, 0.85));
+}
+
+.brand-hero-info {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.brand-hero-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #fff;
+  line-height: 1;
+  text-shadow: 0 0 18px rgba(229, 9, 20, 0.35);
 }
 
 /* ---------- tabs ---------- */
@@ -236,19 +310,38 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--muted);
-  padding: 16px;
+  padding: 20px 16px;
   text-align: center;
 }
 
-.dropzone-empty span {
-  font-size: 13px;
-  color: var(--text);
+.dropzone-logo-icon {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgba(229, 9, 20, 0.45));
+  opacity: 0.9;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.2s ease, opacity 0.2s ease;
+  margin-bottom: 2px;
 }
 
-.dropzone-empty small {
+.dropzone:hover .dropzone-logo-icon {
+  transform: scale(1.08);
+  opacity: 1;
+  filter: drop-shadow(0 0 20px rgba(229, 9, 20, 0.75));
+}
+
+.dropzone-label-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+
+.dropzone-subhint {
   font-size: 11px;
+  color: var(--muted);
 }
 
 .dropzone-preview {
@@ -552,6 +645,12 @@ body {
   border-radius: 4px;
   background:
     repeating-conic-gradient(var(--panel-2) 0% 25%, #101013 0% 50%) 0 0 / 18px 18px;
+}
+
+.result-preview.wide {
+  width: 100%;
+  height: auto;
+  max-height: 280px;
 }
 
 .result-details {

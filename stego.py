@@ -28,11 +28,19 @@ def bits_to_bytes(bits: list[int]) -> bytes:
     return bytes(out)
 
 
-def _embed(passphrase: str, message: str, image: Image.Image) -> tuple[Image.Image, int]:
-    sealed = crypto.seal(passphrase, message.encode("utf-8"))
-    payload = MAGIC + len(sealed).to_bytes(LENGTH_SIZE, "big") + sealed
-    bits = bytes_to_bits(payload)
+def pack_payload(filename: str, data: bytes) -> bytes:
+    return filename.encode("utf-8") + b"\x00" + data
 
+
+def unpack_payload(payload: bytes) -> tuple[str, bytes]:
+    parts = payload.split(b"\x00", 1)
+    if len(parts) == 1:
+        return "message.txt", payload
+    filename = parts[0].decode("utf-8", errors="replace").strip() or "file.bin"
+    return filename, parts[1]
+
+
+def _embed_bits(passphrase: str, bits: list[int], image: Image.Image) -> tuple[Image.Image, int]:
     image = image.convert("RGB")
     pixels = list(image.get_flattened_data())
     slot_count = len(pixels) * 3
@@ -61,6 +69,18 @@ def _embed(passphrase: str, message: str, image: Image.Image) -> tuple[Image.Ima
     return image, len(bits)
 
 
+def _embed_bytes(passphrase: str, payload: bytes, image: Image.Image) -> tuple[Image.Image, int]:
+    sealed = crypto.seal(passphrase, payload)
+    full = MAGIC + len(sealed).to_bytes(LENGTH_SIZE, "big") + sealed
+    return _embed_bits(passphrase, bytes_to_bits(full), image)
+
+
+def _embed(passphrase: str, message: str, image: Image.Image) -> tuple[Image.Image, int]:
+    return _embed_bytes(
+        passphrase, pack_payload("message.txt", message.encode("utf-8")), image
+    )
+
+
 def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -> int:
     if carrier_path.lower().endswith((".jpg", ".jpeg")):
         print(
@@ -75,7 +95,7 @@ def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -
     return bits
 
 
-def _extract(passphrase: str, image: Image.Image) -> str:
+def _read_bits(passphrase: str, image: Image.Image) -> list[int]:
     image = image.convert("RGB")
     pixels = list(image.get_flattened_data())
     slot_count = len(pixels) * 3
@@ -86,6 +106,11 @@ def _extract(passphrase: str, image: Image.Image) -> str:
         pixel_index = slot // 3
         channel = slot % 3
         bits[i] = lsb.extract_bit(pixels[pixel_index][channel])
+    return bits
+
+
+def _extract_bytes(passphrase: str, image: Image.Image) -> bytes:
+    bits = _read_bits(passphrase, image)
 
     header = bits_to_bytes(bits[: HEADER_SIZE * 8])
     if header[:MAGIC_LEN] != MAGIC:
@@ -97,7 +122,12 @@ def _extract(passphrase: str, image: Image.Image) -> str:
     sealed = bits_to_bytes(
         bits[HEADER_SIZE * 8 : HEADER_SIZE * 8 + sealed_length * 8]
     )
-    return crypto.open_sealed(passphrase, sealed).decode("utf-8")
+    return crypto.open_sealed(passphrase, sealed)
+
+
+def _extract(passphrase: str, image: Image.Image) -> str:
+    _, data = unpack_payload(_extract_bytes(passphrase, image))
+    return data.decode("utf-8")
 
 
 def decode(passphrase: str, carrier_path: str) -> str:

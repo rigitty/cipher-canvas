@@ -46,18 +46,14 @@ export default function DropZone({ file, onFile, label }) {
         <img className="dropzone-preview" src={URL.createObjectURL(file)} alt="carrier preview" />
       ) : (
         <div className="dropzone-empty">
-          <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
-            <path
-              d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span>{label}</span>
-          <small>drag &amp; drop or click to browse</small>
+          <img
+            src="/logo.png"
+            alt="Cipher Canvas emblem"
+            className="dropzone-logo-icon"
+            draggable={false}
+          />
+          <span className="dropzone-label-title">{label}</span>
+          <small className="dropzone-subhint">Drag &amp; drop carrier image or click to browse</small>
         </div>
       )}
     </div>

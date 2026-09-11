@@ -23,6 +23,10 @@ def build_parser() -> argparse.ArgumentParser:
     decode_parser = subparsers.add_parser("decode", help="extract a hidden message")
     decode_parser.add_argument("carrier", help="carrier image path")
     decode_parser.add_argument("--passphrase", required=True, help="secret passphrase")
+    decode_parser.add_argument(
+        "--output",
+        help="write the extracted file to this path instead of printing",
+    )
 
     return parser
 
@@ -55,12 +59,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "decode":
+        from PIL import Image
+
+        image = Image.open(args.carrier)
         try:
-            message = stego.decode(args.passphrase, args.carrier)
+            payload = stego._extract_bytes(args.passphrase, image)
         except Exception as exc:
             print(f"error: {exc}")
             return 1
-        print(message)
+        filename, data = stego.unpack_payload(payload)
+        if args.output:
+            with open(args.output, "wb") as file:
+                file.write(data)
+            print(f"extracted '{filename}' ({len(data)} bytes) -> {args.output}")
+        else:
+            try:
+                print(data.decode("utf-8"))
+            except UnicodeDecodeError:
+                print(
+                    f"error: extracted data is binary ('{filename}'); "
+                    f"use --output to write it to a file"
+                )
+                return 1
         return 0
 
     return 2

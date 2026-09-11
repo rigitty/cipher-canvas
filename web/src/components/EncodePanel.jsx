@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "./DropZone.jsx";
 import CompareSlider from "./CompareSlider.jsx";
-import { capacityBytes, encodeImage } from "../api.js";
+import { capacityBytes, encodeImage, isTauri, saveFileNative } from "../api.js";
 import { buildDiffCanvas, objectUrlFor } from "../imageDiff.js";
 
 async function readImageSize(file) {
@@ -35,14 +35,25 @@ export default function EncodePanel() {
   const [showDiff, setShowDiff] = useState(false);
   const [diff, setDiff] = useState(null);
   const [diffBusy, setDiffBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState("");
   const downloadRef = useRef(null);
+const filenameLength =
+    source === "file" && messageFile
+      ? new TextEncoder().encode(messageFile.name).length
+      : new TextEncoder().encode("message.txt").length;
 
   const capacity = useMemo(
     () =>
-      carrierMeta ? capacityBytes(carrierMeta.width, carrierMeta.height) : null,
-    [carrierMeta]
+      carrierMeta
+        ? capacityBytes(
+            carrierMeta.width,
+            carrierMeta.height,
+            filenameLength
+          )
+        : null,
+    [carrierMeta, filenameLength]
   );
-
   useEffect(() => () => {
     if (originalUrl) URL.revokeObjectURL(originalUrl);
   }, [originalUrl]);
@@ -74,7 +85,7 @@ export default function EncodePanel() {
     : source === "text" && message.length === 0
     ? "type a message"
     : source === "file" && !messageFile
-    ? "attach a message file"
+    ? "attach a file to hide"
     : passphrase.length === 0
     ? "enter a passphrase"
     : overCapacity
@@ -107,6 +118,32 @@ export default function EncodePanel() {
       setError(err.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const savePng = async () => {
+    setSaving(true);
+    setSaveNote("");
+    try {
+      if (isTauri()) {
+        const path = await saveFileNative(
+          savedName,
+          result.blob,
+          "PNG Image",
+          ["png"]
+        );
+        setSaveNote(`saved to ${path}`);
+      } else {
+        downloadRef.current?.click();
+      }
+    } catch (err) {
+      if (String(err).includes("cancelled")) {
+        setSaveNote("save cancelled");
+      } else {
+        setSaveNote(`save failed: ${err}`);
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -191,7 +228,9 @@ export default function EncodePanel() {
                   setError("");
                 }}
               />
-              {messageFile ? messageFile.name : "Attach a text file to hide..."}
+              {messageFile
+                ? messageFile.name
+                : "Attach a file to hide (image, text, any)..."}
             </button>
           )}
           <div className="msg-count">
@@ -250,14 +289,26 @@ export default function EncodePanel() {
                 value={savedName}
                 onChange={(e) => setSavedName(e.target.value)}
               />
-              <a
-                ref={downloadRef}
-                className="action-btn"
-                href={result.url}
-                download={savedName}
-              >
-                SAVE PNG
-              </a>
+              {isTauri() ? (
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={savePng}
+                  disabled={saving}
+                >
+                  {saving ? "SAVING..." : "SAVE PNG"}
+                </button>
+              ) : (
+                <a
+                  ref={downloadRef}
+                  className="action-btn"
+                  href={result.url}
+                  download={savedName}
+                >
+                  SAVE PNG
+                </a>
+              )}
+              {saveNote && <div className="hint-box">{saveNote}</div>}
             </div>
           </div>
 

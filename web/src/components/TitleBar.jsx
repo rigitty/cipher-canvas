@@ -52,13 +52,13 @@ export default function TitleBar() {
   return (
     <header className="titlebar">
       <div className="titlebar-brand" data-tauri-drag-region>
-        <svg className="brand-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-          <path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3z" fill="var(--accent)" />
-          <rect x="9" y="9" width="6" height="6" rx="1" fill="#0d0d0f" />
-          <rect x="11" y="7" width="2" height="3" fill="#0d0d0f" />
-        </svg>
+        <img
+          className="brand-logo"
+          src="/logo-title.png"
+          alt="Cipher Canvas logo"
+          draggable={false}
+        />
         <span className="brand-name">CIPHER CANVAS</span>
-        <span className="brand-version">v1.0</span>
       </div>
       <div className="titlebar-spacer" data-tauri-drag-region />
       <div className="titlebar-controls">

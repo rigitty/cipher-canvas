@@ -6,6 +6,26 @@ import stego
 PASSPHRASE = "correct horse battery staple"
 
 
+def test_hide_image() -> None:
+    secret_image = Image.new("RGB", (24, 24), (200, 30, 60))
+    buffer = __import__("io").BytesIO()
+    secret_image.save(buffer, format="PNG")
+    secret_bytes = buffer.getvalue()
+
+    carrier = Image.open("sample.png")
+    output, _ = stego._embed_bytes(
+        PASSPHRASE,
+        stego.pack_payload("secret-photo.png", secret_bytes),
+        carrier,
+    )
+
+    extracted = stego._extract_bytes(PASSPHRASE, output)
+    filename, data = stego.unpack_payload(extracted)
+    assert filename == "secret-photo.png", f"filename mismatch: {filename}"
+    assert data == secret_bytes, "binary round-trip mismatch"
+    print(f"PASS hide image: {filename} ({len(data)} bytes) inside carrier")
+
+
 def expect_roundtrip(message: str, carrier: str = "sample.png") -> None:
     stego.encode(PASSPHRASE, message, carrier, "_verify_out.png")
     recovered = stego.decode(PASSPHRASE, "_verify_out.png")
@@ -32,13 +52,17 @@ def test_empty_message() -> None:
 
 def test_exact_capacity() -> None:
     width, height = Image.open("sample.png").size
-    limit = capacity.max_plaintext_bytes(width, height)
+    limit = capacity.max_plaintext_bytes(
+        width, height, filename_length=len("message.txt")
+    )
     expect_roundtrip("a" * limit)
 
 
 def test_too_large() -> None:
     width, height = Image.open("sample.png").size
-    limit = capacity.max_plaintext_bytes(width, height)
+    limit = capacity.max_plaintext_bytes(
+        width, height, filename_length=len("message.txt")
+    )
 
     def encode_oversized():
         stego.encode(PASSPHRASE, "a" * (limit + 1), "sample.png", "_never.png")
@@ -114,4 +138,5 @@ if __name__ == "__main__":
     test_non_carrier()
     test_tampered_carrier()
     test_tiny_image()
+    test_hide_image()
     print("ALL EDGE-CASE TESTS PASSED")
