@@ -1,6 +1,6 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-export default function ProgressBar({ busy, stages, onFinish }) {
+export default function ProgressBar({ busy, stages, onFinish, onCancel }) {
   const [percent, setPercent] = useState(0);
   const [currentStage, setCurrentStage] = useState(stages?.[0]?.text || "Processing...");
 
@@ -54,8 +54,23 @@ export default function ProgressBar({ busy, stages, onFinish }) {
   return (
     <div className="progress-container">
       <div className="progress-header">
-        <span className="progress-stage">{currentStage}</span>
-        <span className="progress-value">{Math.round(percent)}%</span>
+        <div className="progress-stage-wrap">
+          {busy && <span className="progress-spinner" />}
+          <span className="progress-stage">{currentStage}</span>
+        </div>
+        <div className="progress-actions-wrap">
+          <span className="progress-value">{Math.round(percent)}%</span>
+          {busy && onCancel && (
+            <button
+              type="button"
+              className="progress-cancel-btn"
+              onClick={onCancel}
+              title="Cancel ongoing operation"
+            >
+              CANCEL
+            </button>
+          )}
+        </div>
       </div>
       <div className="progress-track">
         <div

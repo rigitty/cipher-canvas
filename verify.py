@@ -1,9 +1,23 @@
 from PIL import Image
-
 import capacity
 import stego
 
 PASSPHRASE = "correct horse battery staple"
+
+def _ensure_test_fixtures():
+    # In-memory generated test images
+    img = Image.new("RGB", (100, 100), color=(0, 128, 255))
+    for y in range(100):
+        for x in range(100):
+            img.putpixel((x, y), (x % 256, y % 256, (x * y) % 256))
+    img.save("_test_sample.png")
+
+    logo = Image.new("RGB", (400, 400), color=(80, 140, 200))
+    logo.save("_test_logo.jpg", "JPEG")
+
+_ensure_test_fixtures()
+TEST_CARRIER = "_test_sample.png"
+TEST_LOGO = "_test_logo.jpg"
 
 
 def test_hide_image() -> None:
@@ -12,7 +26,7 @@ def test_hide_image() -> None:
     secret_image.save(buffer, format="PNG")
     secret_bytes = buffer.getvalue()
 
-    carrier = Image.open("samples/sample.png")
+    carrier = Image.open(TEST_CARRIER)
     output, _ = stego._embed_bytes(
         PASSPHRASE,
         stego.pack_payload("secret-photo.png", secret_bytes),
@@ -26,7 +40,7 @@ def test_hide_image() -> None:
     print(f"PASS hide image: {filename} ({len(data)} bytes) inside carrier")
 
 
-def expect_roundtrip(message: str, carrier: str = "samples/sample.png") -> None:
+def expect_roundtrip(message: str, carrier: str = TEST_CARRIER) -> None:
     stego.encode(PASSPHRASE, message, carrier, "_verify_out.png")
     recovered = stego.decode(PASSPHRASE, "_verify_out.png")
     assert recovered == message, f"round-trip mismatch: {recovered!r} != {message!r}"
@@ -51,7 +65,7 @@ def test_empty_message() -> None:
 
 
 def test_exact_capacity() -> None:
-    width, height = Image.open("samples/sample.png").size
+    width, height = Image.open(TEST_CARRIER).size
     limit = capacity.max_plaintext_bytes(
         width, height, filename_length=len("message.txt")
     )
@@ -59,19 +73,19 @@ def test_exact_capacity() -> None:
 
 
 def test_too_large() -> None:
-    width, height = Image.open("samples/sample.png").size
+    width, height = Image.open(TEST_CARRIER).size
     limit = capacity.max_plaintext_bytes(
         width, height, filename_length=len("message.txt")
     )
 
     def encode_oversized():
-        stego.encode(PASSPHRASE, "a" * (limit + 1), "samples/sample.png", "_never.png")
+        stego.encode(PASSPHRASE, "a" * (limit + 1), TEST_CARRIER, "_never.png")
 
     expect_error("oversized message rejected", encode_oversized)
 
 
 def test_wrong_passphrase() -> None:
-    stego.encode(PASSPHRASE, "hello", "samples/sample.png", "_verify_out.png")
+    stego.encode(PASSPHRASE, "hello", TEST_CARRIER, "_verify_out.png")
 
     def decode_wrong():
         stego.decode("wrong passphrase", "_verify_out.png")
@@ -81,12 +95,12 @@ def test_wrong_passphrase() -> None:
 
 def test_non_carrier() -> None:
     expect_error(
-        "non-carrier image rejected", lambda: stego.decode(PASSPHRASE, "samples/sample.png")
+        "non-carrier image rejected", lambda: stego.decode(PASSPHRASE, TEST_CARRIER)
     )
 
 
 def test_tampered_carrier() -> None:
-    stego.encode(PASSPHRASE, "integrity matters", "samples/sample.png", "_verify_out.png")
+    stego.encode(PASSPHRASE, "integrity matters", TEST_CARRIER, "_verify_out.png")
     image = Image.open("_verify_out.png").convert("RGB")
     pixels = list(image.get_flattened_data())
     slot_count = len(pixels) * 3
@@ -131,12 +145,12 @@ def test_tiny_image() -> None:
 
 def test_bit_depths() -> None:
     for b in [1, 2, 3, 4]:
-        width, height = Image.open("samples/sample.png").size
+        width, height = Image.open(TEST_CARRIER).size
         limit = capacity.max_plaintext_bytes(
             width, height, filename_length=len("message.txt"), bit_depth=b
         )
         msg = f"Bit depth {b} test: " + ("x" * min(limit, 200))
-        stego.encode(PASSPHRASE, msg, "samples/sample.png", "_verify_out.png", bit_depth=b)
+        stego.encode(PASSPHRASE, msg, TEST_CARRIER, "_verify_out.png", bit_depth=b)
         recovered = stego.decode(PASSPHRASE, "_verify_out.png")
         assert recovered == msg, f"bit_depth {b} roundtrip failed"
         print(f"PASS variable bit depth {b}/4: capacity = {limit} bytes")
@@ -164,7 +178,7 @@ def test_robust_jpeg_resilience() -> None:
     import io
     import robust
 
-    carrier_path = "samples/logo.jpg"
+    carrier_path = TEST_LOGO
     out_path = "_verify_robust_out.png"
     secret_msg = "Secret coordinates: 41.0082° N, 28.9784° E. WhatsApp resilience verified."
 

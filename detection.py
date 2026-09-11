@@ -80,25 +80,18 @@ def analyze_image(image: Image.Image) -> dict:
     risk_score = max(2, min(99, risk_score))
 
     if risk_score >= 70:
-        verdict = "HIGH PROBABILITY OF STEGANOGRAPHY"
+        verdict = "HIDDEN PAYLOAD DETECTED"
         color = "#e50914"
-        detected_planes = sum(1 for c in plane_corrs if c < 0.55)
-        details = (
-            f"Artificial bit-plane randomization detected across {max(1, detected_planes)} LSB plane(s). "
-            f"Pairs-of-Values chi-square statistic ({avg_stat:.2f}/df) and zero spatial autocorrelation indicate cryptographic payload embedding."
-        )
+        details = "Strong indicators of encrypted data found embedded inside this image's pixel layers."
     elif risk_score >= 35:
-        verdict = "SUSPICIOUS BIT PATTERN DETECTED"
+        verdict = "SUSPICIOUS PATTERNS"
         color = "#e67e22"
-        details = (
-            f"Moderate bit-plane equalization observed (&chi;&sup2;/df: {avg_stat:.2f}). "
-            "Statistical noise anomalies detected in the carrier pixel distribution."
-        )
+        details = "Minor irregularities detected. Image may contain hidden data or heavy compression."
     else:
-        verdict = "NATURAL CARRIER (CLEAN)"
+        verdict = "CLEAN / NATURAL IMAGE"
         color = "#2ecc71"
         details = (
-            f"Normal pair-of-values frequency variance (&chi;&sup2;/df: {avg_stat:.2f}) and natural spatial bit correlation. "
+            "No hidden payload found. Pixel distribution matches standard unmodified photography. "
             "No steganographic signature detected."
         )
 
@@ -109,14 +102,33 @@ def analyze_image(image: Image.Image) -> dict:
         "verdict": verdict,
         "color": color,
         "details": details,
+        "dimensions": f"{image.width} \u00d7 {image.height}",
+        "total_pixels": f"{image.width * image.height:,}",
+        "unique_colors": f"{unique_colors:,}",
+        "chi_square": {
+            "red": channel_stats[0],
+            "green": channel_stats[1],
+            "blue": channel_stats[2],
+            "average": round(avg_stat, 3),
+        },
         "chi_square_per_df": {
             "red": channel_stats[0],
             "green": channel_stats[1],
             "blue": channel_stats[2],
             "average": round(avg_stat, 3),
         },
+        "bit_planes": [
+            {"plane": "LSB (Plane 0)", "correlation": round(plane_corrs[0], 4), "status": "Random" if plane_corrs[0] < 0.53 else "Natural"},
+            {"plane": "Plane 1", "correlation": round(plane_corrs[1], 4), "status": "Random" if plane_corrs[1] < 0.58 else "Natural"},
+            {"plane": "Plane 2", "correlation": round(plane_corrs[2], 4), "status": "Random" if plane_corrs[2] < 0.70 else "Natural"},
+            {"plane": "Plane 3", "correlation": round(plane_corrs[3], 4), "status": "Random" if plane_corrs[3] < 0.85 else "Natural"},
+        ],
+        "metrics": {
+            "p0_randomness": f"{round(p0_randomness * 100, 1)}%",
+            "multibit_anomaly": f"{round(multibit_anomaly * 100, 1)}%",
+            "pov_anomaly": f"{round(pov_anomaly * 100, 1)}%",
+        },
         "lsb_preview": lsb_preview,
-        "dimensions": f"{image.width}x{image.height}",
     }
 
 

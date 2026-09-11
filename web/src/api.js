@@ -60,11 +60,14 @@ function errorDetail(res, body) {
   return `request failed (${res.status})`;
 }
 
-async function postForm(url, form) {
+async function postForm(url, form, signal) {
   let res;
   try {
-    res = await fetch(url, { method: "POST", body: form });
-  } catch {
+    res = await fetch(url, { method: "POST", body: form, signal });
+  } catch (err) {
+    if (err.name === "AbortError" || (signal && signal.aborted)) {
+      throw new Error("Operation cancelled by user.");
+    }
     throw new Error(
       "cannot reach the engine server — make sure the backend is running"
     );
@@ -72,7 +75,7 @@ async function postForm(url, form) {
   return res;
 }
 
-export async function encodeImage({ carrier, message, passphrase, messageFile, bitDepth = 1, mode = "stealth" }) {
+export async function encodeImage({ carrier, message, passphrase, messageFile, bitDepth = 1, mode = "stealth", signal }) {
   const form = new FormData();
   form.append("carrier", carrier);
   form.append("passphrase", passphrase);
@@ -84,7 +87,7 @@ export async function encodeImage({ carrier, message, passphrase, messageFile, b
     form.append("message", message);
   }
 
-  const res = await postForm(`${API_URL}/api/encode`, form);
+  const res = await postForm(`${API_URL}/api/encode`, form, signal);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(errorDetail(res, body));
@@ -100,12 +103,12 @@ export async function encodeImage({ carrier, message, passphrase, messageFile, b
   };
 }
 
-export async function decodeImage({ carrier, passphrase }) {
+export async function decodeImage({ carrier, passphrase, signal }) {
   const form = new FormData();
   form.append("carrier", carrier);
   form.append("passphrase", passphrase);
 
-  const res = await postForm(`${API_URL}/api/decode`, form);
+  const res = await postForm(`${API_URL}/api/decode`, form, signal);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(errorDetail(res, body));
@@ -128,7 +131,7 @@ export async function decodeImage({ carrier, passphrase }) {
   };
 }
 
-export async function encodeSharded({ carriers, message, passphrase, messageFile, bitDepth = 1 }) {
+export async function encodeSharded({ carriers, message, passphrase, messageFile, bitDepth = 1, signal }) {
   const form = new FormData();
   for (const carrier of carriers) {
     form.append("carriers", carrier);
@@ -141,31 +144,38 @@ export async function encodeSharded({ carriers, message, passphrase, messageFile
     form.append("message", message);
   }
 
-  const res = await postForm(`${API_URL}/api/encode/shard`, form);
+  const res = await postForm(`${API_URL}/api/encode/shard`, form, signal);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(errorDetail(res, body));
   }
-  const blob = await res.blob();
-  const rawName = res.headers.get("X-Filename");
-  const filename = rawName ? decodeURIComponent(rawName) : "sharded_payload.zip";
+  
+  const data = await res.json();
+  const binaryString = atob(data.zip_base64);
+  const zipBytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    zipBytes[i] = binaryString.charCodeAt(i);
+  }
+  const blob = new Blob([zipBytes], { type: "application/zip" });
+
   return {
     blob,
     url: URL.createObjectURL(blob),
-    filename,
-    shardCount: Number(res.headers.get("X-Shard-Count")) || carriers.length,
-    bitDepth: res.headers.get("X-Bit-Depth") || bitDepth,
+    filename: data.filename || "sharded_payload.zip",
+    shardCount: data.shard_count || carriers.length,
+    bitDepth: data.bit_depth || bitDepth,
+    shards: data.shards || [],
   };
 }
 
-export async function decodeSharded({ shards, passphrase }) {
+export async function decodeSharded({ shards, passphrase, signal }) {
   const form = new FormData();
   for (const shard of shards) {
     form.append("shards", shard);
   }
   form.append("passphrase", passphrase);
 
-  const res = await postForm(`${API_URL}/api/decode/shard`, form);
+  const res = await postForm(`${API_URL}/api/decode/shard`, form, signal);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(errorDetail(res, body));
@@ -190,11 +200,11 @@ export async function decodeSharded({ shards, passphrase }) {
   };
 }
 
-export async function inspectImage(file) {
+export async function inspectImage(file, signal) {
   const form = new FormData();
   form.append("image", file);
 
-  const res = await postForm(`${API_URL}/api/inspect`, form);
+  const res = await postForm(`${API_URL}/api/inspect`, form, signal);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(errorDetail(res, body));

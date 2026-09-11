@@ -46,7 +46,7 @@ def max_robust_capacity_bytes(width: int, height: int) -> int:
     return capacity.max_robust_capacity_bytes(width, height)
 
 
-def encode_image(passphrase: str, message: str, image: Image.Image) -> Image.Image:
+def encode_image(passphrase: str, message: str | bytes, image: Image.Image) -> Image.Image:
     w, h = image.size
     if max(w, h) > MAX_SAFE_DIM:
         scale = MAX_SAFE_DIM / max(w, h)
@@ -58,7 +58,8 @@ def encode_image(passphrase: str, message: str, image: Image.Image) -> Image.Ima
         h = (h // 8) * 8
         image = image.crop((0, 0, w, h))
 
-    sealed = crypto.seal(passphrase, message.encode("utf-8"))
+    raw_bytes = message if isinstance(message, bytes) else message.encode("utf-8")
+    sealed = crypto.seal(passphrase, raw_bytes)
     raw_packet = MAGIC_ROBUST + len(sealed).to_bytes(4, "big") + sealed
 
     rs = reedsolo.RSCodec(RS_PARITY_BYTES)
@@ -140,7 +141,7 @@ def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -
     result_img.save(output_path, "PNG")
 
 
-def decode_image(passphrase: str, image: Image.Image) -> str:
+def decode_image_bytes(passphrase: str, image: Image.Image) -> bytes:
     w, h = image.size
     if w % 8 != 0 or h % 8 != 0:
         w = (w // 8) * 8
@@ -214,8 +215,12 @@ def decode_image(passphrase: str, image: Image.Image) -> str:
 
     sealed_len = int.from_bytes(decoded_packet[4:8], "big")
     sealed = decoded_packet[8 : 8 + sealed_len]
-    pt = crypto.open_sealed(passphrase, bytes(sealed))
-    return pt.decode("utf-8")
+    return crypto.open_sealed(passphrase, bytes(sealed))
+
+
+def decode_image(passphrase: str, image: Image.Image) -> str:
+    raw = decode_image_bytes(passphrase, image)
+    return raw.decode("utf-8", errors="replace")
 
 
 def decode(passphrase: str, carrier_path: str) -> str:

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ProgressBar from "./ProgressBar.jsx";
 import EntropyMeter from "./EntropyMeter.jsx";
+import CompareSlider from "./CompareSlider.jsx";
+import { buildDiffCanvas } from "../imageDiff.js";
 import {
   capacityBytes,
   encodeSharded,
@@ -47,6 +49,10 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
   const [encodeResult, setEncodeResult] = useState(null);
   const [savingZip, setSavingZip] = useState(false);
   const [zipNote, setZipNote] = useState("");
+  const [selectedShardIndex, setSelectedShardIndex] = useState(0);
+  const [shardDiff, setShardDiff] = useState(null);
+  const [showShardDiff, setShowShardDiff] = useState(false);
+  const [diffBusy, setDiffBusy] = useState(false);
 
   // ----- Decode State -----
   const [shardFiles, setShardFiles] = useState([]);
@@ -60,9 +66,28 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
 
   const fileInputRef = useRef(null);
   const shardInputRef = useRef(null);
+  const encodeAbortRef = useRef(null);
+  const decodeAbortRef = useRef(null);
+
+  const cancelEncode = () => {
+    if (encodeAbortRef.current) {
+      encodeAbortRef.current.abort();
+    }
+    setBusy(false);
+    setError("Sharding cancelled.");
+  };
+
+  const cancelDecode = () => {
+    if (decodeAbortRef.current) {
+      decodeAbortRef.current.abort();
+    }
+    setDecodeBusy(false);
+    setDecodeError("Assembly cancelled.");
+  };
 
   // --- Handlers for Encode Carriers ---
   const handleAddCarriers = async (e) => {
+    if (busy) return;
     const files = Array.from(e.target.files || []).filter((f) =>
       IMAGE_EXT_REGEX.test(f.name)
     );
@@ -83,6 +108,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
   };
 
   const removeCarrier = (idx) => {
+    if (busy) return;
     setCarriers((prev) => prev.filter((_, i) => i !== idx));
     setCarriersMeta((prev) => prev.filter((_, i) => i !== idx));
   };
@@ -109,6 +135,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
   const isOverCapacity = payloadSizeBytes > 0 && totalCapacityBytes > 0 && payloadSizeBytes > totalCapacityBytes;
 
   const handleAddShards = (e) => {
+    if (decodeBusy) return;
     const files = Array.from(e.target.files || []).filter((f) =>
       IMAGE_EXT_REGEX.test(f.name)
     );
@@ -119,6 +146,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
   };
 
   const removeShard = (idx) => {
+    if (decodeBusy) return;
     setShardFiles((prev) => prev.filter((_, i) => i !== idx));
   };
 
@@ -146,6 +174,9 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
     setEncodeResult(null);
     setZipNote("");
 
+    const controller = new AbortController();
+    encodeAbortRef.current = controller;
+
     try {
       const res = await encodeSharded({
         carriers,
@@ -153,12 +184,14 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
         messageFile: payloadType === "file" ? payloadFile : null,
         passphrase,
         bitDepth,
+        signal: controller.signal,
       });
       setEncodeResult(res);
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
+      encodeAbortRef.current = null;
     }
   };
 
@@ -178,10 +211,14 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
     setDecodeResult(null);
     setSaveDecodedNote("");
 
+    const controller = new AbortController();
+    decodeAbortRef.current = controller;
+
     try {
       const res = await decodeSharded({
         shards: shardFiles,
         passphrase: decodePassphrase,
+        signal: controller.signal,
       });
       setDecodeResult(res);
       setSaveName(res.filename);
@@ -189,6 +226,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
       setDecodeError(err.message);
     } finally {
       setDecodeBusy(false);
+      decodeAbortRef.current = null;
     }
   };
 
@@ -265,7 +303,8 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                 <button
                   type="button"
                   className="ghost-btn compact"
-                  onClick={() => fileInputRef.current?.click()}
+                  disabled={busy}
+                  onClick={() => !busy && fileInputRef.current?.click()}
                 >
                   + ADD CARRIERS
                 </button>
@@ -275,14 +314,15 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                   multiple
                   accept="image/*"
                   hidden
+                  disabled={busy}
                   onChange={handleAddCarriers}
                 />
               </div>
 
               {carriers.length === 0 ? (
                 <div
-                  className="shard-empty-dropzone"
-                  onClick={() => fileInputRef.current?.click()}
+                  className={`shard-empty-dropzone ${busy ? "is-disabled" : ""}`}
+                  onClick={() => !busy && fileInputRef.current?.click()}
                 >
                   <img src="/logo.png" alt="logo" className="dropzone-logo-icon" />
                   <span className="dropzone-label-title">Select 2 or more carrier images</span>
@@ -306,7 +346,8 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                       <button
                         type="button"
                         className="shard-remove-btn"
-                        onClick={() => removeCarrier(i)}
+                        disabled={busy}
+                        onClick={() => !busy && removeCarrier(i)}
                         title="Remove image"
                       >
                         &times;
@@ -332,14 +373,16 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                 <button
                   type="button"
                   className={payloadType === "file" ? "active" : ""}
-                  onClick={() => setPayloadType("file")}
+                  disabled={busy}
+                  onClick={() => !busy && setPayloadType("file")}
                 >
                   FILE (ANY SIZE)
                 </button>
                 <button
                   type="button"
                   className={payloadType === "text" ? "active" : ""}
-                  onClick={() => setPayloadType("text")}
+                  disabled={busy}
+                  onClick={() => !busy && setPayloadType("text")}
                 >
                   TEXT
                 </button>
@@ -349,12 +392,14 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                 <button
                   type="button"
                   className="file-input"
-                  onClick={() => document.getElementById("shard-payload-file").click()}
+                  disabled={busy}
+                  onClick={() => !busy && document.getElementById("shard-payload-file").click()}
                 >
                   <input
                     id="shard-payload-file"
                     type="file"
                     hidden
+                    disabled={busy}
                     onChange={(e) => {
                       setPayloadFile(e.target.files[0]);
                       setError("");
@@ -368,6 +413,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                   rows={3}
                   placeholder="Secret message or large text to distribute..."
                   value={payloadText}
+                  disabled={busy}
                   onChange={(e) => setPayloadText(e.target.value)}
                 />
               )}
@@ -395,6 +441,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                 placeholder="Passphrase for shard distribution & encryption"
                 value={passphrase}
                 autoComplete="off"
+                disabled={busy}
                 onChange={(e) => setPassphrase(e.target.value)}
               />
               <EntropyMeter passphrase={passphrase} />
@@ -407,6 +454,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                   max="4"
                   step="1"
                   value={bitDepth}
+                  disabled={busy}
                   onChange={(e) => setBitDepth(Number(e.target.value))}
                   className="capacity-slider"
                   style={{ width: "140px" }}
@@ -422,7 +470,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
               >
                 {busy ? "SPLITTING & ENCRYPTING..." : `GENERATE ${carriers.length || 0} SHARDS (ZIP)`}
               </button>
-              <ProgressBar busy={busy} stages={encodeStages} />
+              <ProgressBar busy={busy} stages={encodeStages} onCancel={cancelEncode} />
             </section>
           </div>
 
@@ -451,6 +499,76 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                 </div>
                 {zipNote && <div className="hint-box">{zipNote}</div>}
               </div>
+
+              {/* Per-Carrier Image Difference Inspector */}
+              {encodeResult.shards && encodeResult.shards.length > 0 && (
+                <div style={{ marginTop: "16px" }}>
+                  <h2 className="section-title">INSPECT MODIFIED PIXELS PER CARRIER IMAGE</h2>
+                  <div className="segmented" style={{ marginBottom: "12px" }}>
+                    {encodeResult.shards.map((sh, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={selectedShardIndex === idx ? "active" : ""}
+                        onClick={() => {
+                          setSelectedShardIndex(idx);
+                          setShardDiff(null);
+                          setShowShardDiff(false);
+                        }}
+                      >
+                        SHARD #{idx + 1} ({carriers[idx]?.name || `Image ${idx + 1}`})
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="compare-toolbar">
+                    <span className="compare-caption">
+                      {showShardDiff && shardDiff
+                        ? `${shardDiff.changed.toLocaleString()} pixels modified in Shard #${selectedShardIndex + 1}`
+                        : `Slide to inspect Shard #${selectedShardIndex + 1} vs Original Carrier`}
+                    </span>
+                    <button
+                      type="button"
+                      className={`ghost-btn ${showShardDiff ? "active" : ""}`}
+                      onClick={async () => {
+                        if (shardDiff) {
+                          setShowShardDiff(!showShardDiff);
+                          return;
+                        }
+                        setDiffBusy(true);
+                        try {
+                          const origUrl = URL.createObjectURL(carriers[selectedShardIndex]);
+                          const { canvas, changed } = await buildDiffCanvas(origUrl, encodeResult.shards[selectedShardIndex].data_url);
+                          setShardDiff({ url: canvas.toDataURL("image/png"), changed });
+                          setShowShardDiff(true);
+                        } catch (err) {
+                          console.error("Diff computation failed:", err);
+                        } finally {
+                          setDiffBusy(false);
+                        }
+                      }}
+                      disabled={diffBusy}
+                    >
+                      {diffBusy
+                        ? "SCANNING PIXELS..."
+                        : showShardDiff
+                        ? "HIDE HIGHLIGHTS"
+                        : "HIGHLIGHT CHANGED PIXELS"}
+                    </button>
+                  </div>
+
+                  {showShardDiff && shardDiff ? (
+                    <img className="compare-img diff-static" src={shardDiff.url} alt="changed pixels" />
+                  ) : (
+                    <CompareSlider
+                      leftUrl={URL.createObjectURL(carriers[selectedShardIndex])}
+                      rightUrl={encodeResult.shards[selectedShardIndex].data_url}
+                      leftLabel="ORIGINAL CARRIER"
+                      rightLabel={`SHARD #${selectedShardIndex + 1} ENCODED`}
+                    />
+                  )}
+                </div>
+              )}
             </section>
           )}
         </div>
@@ -464,7 +582,8 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                 <button
                   type="button"
                   className="ghost-btn compact"
-                  onClick={() => shardInputRef.current?.click()}
+                  disabled={decodeBusy}
+                  onClick={() => !decodeBusy && shardInputRef.current?.click()}
                 >
                   + ADD SHARD IMAGES
                 </button>
@@ -474,14 +593,15 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                   multiple
                   accept="image/*"
                   hidden
+                  disabled={decodeBusy}
                   onChange={handleAddShards}
                 />
               </div>
 
               {shardFiles.length === 0 ? (
                 <div
-                  className="shard-empty-dropzone"
-                  onClick={() => shardInputRef.current?.click()}
+                  className={`shard-empty-dropzone ${decodeBusy ? "is-disabled" : ""}`}
+                  onClick={() => !decodeBusy && shardInputRef.current?.click()}
                 >
                   <img src="/logo.png" alt="logo" className="dropzone-logo-icon" />
                   <span className="dropzone-label-title">Select all shard images</span>
@@ -505,7 +625,8 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                       <button
                         type="button"
                         className="shard-remove-btn"
-                        onClick={() => removeShard(i)}
+                        disabled={decodeBusy}
+                        onClick={() => !decodeBusy && removeShard(i)}
                         title="Remove shard"
                       >
                         &times;
@@ -524,6 +645,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
                 placeholder="Passphrase used during sharding"
                 value={decodePassphrase}
                 autoComplete="off"
+                disabled={decodeBusy}
                 onChange={(e) => setDecodePassphrase(e.target.value)}
               />
               <EntropyMeter passphrase={decodePassphrase} />
@@ -537,7 +659,7 @@ export default function ShardPanel({ defaultSubTab = "encode" }) {
               >
                 {decodeBusy ? "VALIDATING & ASSEMBLING..." : `ASSEMBLE ${shardFiles.length} SHARDS`}
               </button>
-              <ProgressBar busy={decodeBusy} stages={decodeStages} />
+              <ProgressBar busy={decodeBusy} stages={decodeStages} onCancel={cancelDecode} />
               <div className="robust-tip-box" style={{ marginTop: "10px" }}>
                 Auto-sorts shards by sequence index and verifies cryptographic CRC checksums.
               </div>

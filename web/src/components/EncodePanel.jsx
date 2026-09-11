@@ -50,6 +50,7 @@ export default function EncodePanel() {
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState("");
   const downloadRef = useRef(null);
+  const abortRef = useRef(null);
 
   const filenameLength =
     source === "file" && messageFile
@@ -74,6 +75,7 @@ export default function EncodePanel() {
   }, [originalUrl]);
 
   const onCarrier = async (file) => {
+    if (busy) return;
     try {
       const meta = await readImageSize(file);
       if (originalUrl) URL.revokeObjectURL(originalUrl);
@@ -87,6 +89,14 @@ export default function EncodePanel() {
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  const cancelOperation = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    setBusy(false);
+    setError("Operation cancelled.");
   };
 
   const messageBytes =
@@ -121,6 +131,10 @@ export default function EncodePanel() {
     setResult(null);
     setDiff(null);
     setShowDiff(false);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const res = await encodeImage({
         carrier,
@@ -129,6 +143,7 @@ export default function EncodePanel() {
         messageFile: source === "file" ? messageFile : null,
         bitDepth,
         mode,
+        signal: controller.signal,
       });
       setResult(res);
       const base = carrier.name.replace(/\.(png|jpg|jpeg|bmp|gif|webp)$/i, "") || "carrier";
@@ -137,6 +152,7 @@ export default function EncodePanel() {
       setError(err.message);
     } finally {
       setBusy(false);
+      abortRef.current = null;
     }
   };
 
@@ -221,11 +237,12 @@ export default function EncodePanel() {
         </button>
       </div>
 
-      {carrierType === "multi" ? (
+      <div style={{ display: carrierType === "multi" ? "block" : "none" }}>
         <ShardPanel defaultSubTab="encode" />
-      ) : (
-        <>
-          <section className="panel-section">
+      </div>
+
+      <div style={{ display: carrierType === "single" ? "contents" : "none" }}>
+        <section className="panel-section">
             <h2 className="section-title">TRANSMISSION MODE</h2>
             <div className="mode-selector">
               <div
@@ -259,7 +276,7 @@ export default function EncodePanel() {
       <div className="panel-grid">
         <section className="panel-section">
           <h2 className="section-title">CARRIER IMAGE</h2>
-          <DropZone file={carrier} onFile={onCarrier} label="Select carrier image" />
+          <DropZone file={carrier} onFile={onCarrier} label="Select carrier image" disabled={busy} />
           {carrierMeta && (
             <div className="file-meta">
               <span>{carrier.name}</span>
@@ -279,14 +296,16 @@ export default function EncodePanel() {
             <button
               type="button"
               className={source === "text" ? "active" : ""}
-              onClick={() => setSource("text")}
+              onClick={() => !busy && setSource("text")}
+              disabled={busy}
             >
               TEXT
             </button>
             <button
               type="button"
               className={source === "file" ? "active" : ""}
-              onClick={() => setSource("file")}
+              onClick={() => !busy && setSource("file")}
+              disabled={busy}
             >
               FILE
             </button>
@@ -298,6 +317,7 @@ export default function EncodePanel() {
               rows={4}
               placeholder="Type the secret message to hide..."
               value={message}
+              disabled={busy}
               onChange={(e) => {
                 setMessage(e.target.value);
                 setError("");
@@ -307,12 +327,14 @@ export default function EncodePanel() {
             <button
               type="button"
               className="file-input"
-              onClick={() => document.getElementById("payload-file").click()}
+              disabled={busy}
+              onClick={() => !busy && document.getElementById("payload-file").click()}
             >
               <input
                 id="payload-file"
                 type="file"
                 hidden
+                disabled={busy}
                 onChange={(e) => {
                   setMessageFile(e.target.files[0]);
                   setError("");
@@ -344,6 +366,7 @@ export default function EncodePanel() {
                 max="4"
                 step="1"
                 value={bitDepth}
+                disabled={busy}
                 onChange={(e) => setBitDepth(Number(e.target.value))}
                 className="capacity-slider"
               />
@@ -375,6 +398,7 @@ export default function EncodePanel() {
             placeholder="Passphrase for AES-256-GCM"
             value={passphrase}
             autoComplete="off"
+            disabled={busy}
             onChange={(e) => {
               setPassphrase(e.target.value);
               setError("");
@@ -389,7 +413,7 @@ export default function EncodePanel() {
           >
             {busy ? "ENCODING CARRIER..." : "ENCODE CARRIER"}
           </button>
-          <ProgressBar busy={busy} stages={encodeStages} />
+          <ProgressBar busy={busy} stages={encodeStages} onCancel={cancelOperation} />
           {!busy && disabledHint && <div className="hint-box">{disabledHint}</div>}
         </section>
       </div>
@@ -494,8 +518,7 @@ export default function EncodePanel() {
           )}
         </section>
       )}
-      </>
-      )}
+      </div>
     </div>
   );
 }

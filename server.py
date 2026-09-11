@@ -87,8 +87,8 @@ def encode(
     if mode == "robust":
         # Robust DCT + Reed-Solomon Mode (JPEG/WhatsApp lossy resistant)
         try:
-            text_to_hide = file_data.decode("utf-8", errors="replace")
-            result_img = robust.encode_image(passphrase, text_to_hide, image)
+            payload = stego.pack_payload(filename, file_data)
+            result_img = robust.encode_image(passphrase, payload, image)
             buffer = io.BytesIO()
             result_img.save(buffer, "PNG")
             out_bytes = buffer.getvalue()
@@ -184,22 +184,35 @@ def encode_shard(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Sharding failed: {exc}")
 
-    # Package all stego images into a ZIP archive
+    # Package all stego images into a ZIP archive and return per-shard data
+    import base64
     zip_buffer = io.BytesIO()
+    shard_items = []
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for idx, s_img in enumerate(stego_images):
             img_buf = io.BytesIO()
             s_img.save(img_buf, "PNG")
-            zf.writestr(f"shard_{idx+1}_of_{len(stego_images)}.png", img_buf.getvalue())
+            img_bytes = img_buf.getvalue()
+            shard_name = f"shard_{idx+1}_of_{len(stego_images)}.png"
+            zf.writestr(shard_name, img_bytes)
+            shard_items.append({
+                "index": idx + 1,
+                "name": shard_name,
+                "data_url": f"data:image/png;base64,{base64.b64encode(img_bytes).decode('ascii')}",
+                "width": s_img.width,
+                "height": s_img.height,
+            })
 
-    return Response(
-        content=zip_buffer.getvalue(),
-        media_type="application/zip",
-        headers={
-            "X-Filename": quote(f"sharded_{filename}.zip"),
-            "X-Shard-Count": str(len(stego_images)),
-            "X-Bit-Depth": str(bit_depth),
-        },
+    zip_b64 = base64.b64encode(zip_buffer.getvalue()).decode("ascii")
+
+    return JSONResponse(
+        content={
+            "zip_base64": zip_b64,
+            "filename": f"sharded_{filename}.zip",
+            "shard_count": len(stego_images),
+            "bit_depth": bit_depth,
+            "shards": shard_items,
+        }
     )
 
 
@@ -269,11 +282,17 @@ def decode(
     except Exception:
         # 3. If LSB fails, automatically try Robust DCT + Reed-Solomon decode!
         try:
-            recovered_text = robust.decode_image(passphrase, image)
+            recovered_bytes = robust.decode_image_bytes(passphrase, image)
+            try:
+                rec_filename, rec_data = stego.unpack_payload(recovered_bytes)
+            except Exception:
+                rec_filename = "recovered_message.txt"
+                rec_data = recovered_bytes
+            media_type = mimetypes.guess_type(rec_filename)[0] or "application/octet-stream"
             return Response(
-                content=recovered_text.encode("utf-8"),
-                media_type="text/plain; charset=utf-8",
-                headers={"X-Filename": quote("recovered_message.txt"), "X-Mode": "robust"},
+                content=rec_data,
+                media_type=media_type,
+                headers={"X-Filename": quote(rec_filename), "X-Mode": "robust"},
             )
         except Exception:
             raise HTTPException(

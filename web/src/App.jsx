@@ -38,13 +38,15 @@ export default function App() {
 
       </header>
       <main className="content">
-        {tab === "encode" ? (
+        <div className="tab-pane" style={{ display: tab === "encode" ? "block" : "none" }}>
           <EncodePanel />
-        ) : tab === "decode" ? (
+        </div>
+        <div className="tab-pane" style={{ display: tab === "decode" ? "block" : "none" }}>
           <DecodePanel />
-        ) : (
+        </div>
+        <div className="tab-pane" style={{ display: tab === "inspect" ? "block" : "none" }}>
           <InspectPanel />
-        )}
+        </div>
       </main>
     </div>
   );

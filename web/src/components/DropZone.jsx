@@ -3,13 +3,13 @@ import { isTauri, readNativeFile } from "../api.js";
 
 const IMAGE_EXT_REGEX = /\.(png|jpe?g|bmp|webp|gif|tiff?)$/i;
 
-export default function DropZone({ file, onFile, label }) {
+export default function DropZone({ file, onFile, label, disabled = false }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
   const dropzoneRef = useRef(null);
 
   const readFile = (f) => {
-    if (!f) return;
+    if (!f || disabled) return;
     const isImg = (f.type && f.type.startsWith("image/")) || IMAGE_EXT_REGEX.test(f.name);
     if (!isImg) {
       alert(`${f.name} is not a supported image file`);
@@ -21,12 +21,14 @@ export default function DropZone({ file, onFile, label }) {
   const onDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled) return;
     setDragging(true);
   };
 
   const onDragEnter = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled) return;
     setDragging(true);
   };
 
@@ -40,6 +42,7 @@ export default function DropZone({ file, onFile, label }) {
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
+    if (disabled) return;
     const droppedFiles = e.dataTransfer?.files;
     if (droppedFiles && droppedFiles.length > 0) {
       readFile(droppedFiles[0]);
@@ -47,6 +50,7 @@ export default function DropZone({ file, onFile, label }) {
   };
 
   const handlePasteEvent = (e) => {
+    if (disabled) return;
     const items = e.clipboardData?.items;
     if (!items) return;
     for (const item of items) {
@@ -63,6 +67,7 @@ export default function DropZone({ file, onFile, label }) {
 
   const handleClipboardClick = async (e) => {
     e.stopPropagation();
+    if (disabled) return;
     try {
       if (navigator.clipboard?.read) {
         const items = await navigator.clipboard.read();
@@ -133,16 +138,18 @@ export default function DropZone({ file, onFile, label }) {
   return (
     <div
       ref={dropzoneRef}
-      className={`dropzone ${dragging ? "is-dragging" : ""}`}
-      onClick={() => inputRef.current?.click()}
+      className={`dropzone ${dragging ? "is-dragging" : ""} ${disabled ? "is-disabled" : ""}`}
+      onClick={() => {
+        if (!disabled) inputRef.current?.click();
+      }}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       role="button"
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+        if (!disabled && (e.key === "Enter" || e.key === " ")) inputRef.current?.click();
       }}
     >
       <input
