@@ -1,12 +1,19 @@
-# Python
+# Python / Bytecode
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# PyInstaller / Build outputs
 build/
-develop-eggs/
 dist/
+*.spec
+*.pkg
+*.manifest
+
+# Python Packaging
+develop-eggs/
 downloads/
 eggs/
 .eggs/
@@ -20,7 +27,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Environments
+# Virtual Environments
 .env
 .env.*
 .venv/
@@ -31,7 +38,7 @@ env.bak/
 venv.bak/
 pythonenv/
 
-# Testing / Tooling
+# Testing / Tooling / Caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -43,39 +50,49 @@ htmlcov/
 .hypothesis/
 coverage.xml
 *.cover
-.hy
-
-# Virtual environments (conda)
-__pycache__
+_verify_*
+_test_*
+_tiny.*
+_never.*
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Secret / payload data
-*.png
-*.jpg
-*.jpeg
-*.bmp
-!assets/**/*.png
-!samples/*
+# User payloads, temporary keys, archives
 *.pem
 *.key
 *.enc
 *.bin
+*.zip
+*.tar.*
+*.mp4
 payload*.txt
 carrier*
 output*
 
-# Tauri / Web (Vite + React)
+# Raw images (ignore test/run images except project assets)
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.webp
+*.gif
+!assets/**/*
+!samples/**/*
+!web/src/assets/**/*
+!web/public/**/*
+!web/src-tauri/icons/*.png
+!web/src-tauri/icons/*.ico
+!web/src-tauri/icons/*.icns
+web/src-tauri/icons/android/
+web/src-tauri/icons/ios/
+
+# Tauri / Web (Vite + React + Rust target)
 web/node_modules/
 web/dist/
 web/src-tauri/target/
 web/src-tauri/gen/
-!web/src-tauri/icons/*.png
-!web/src-tauri/icons/*.ico
-!web/src-tauri/icons/*.icns
-!web/public/logo.png
-!web/public/logo-title.png
+web/src-tauri/WixTools/
 
 # Logs
 *.log
@@ -84,14 +101,17 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
-# OS
+# OS / Windows / Mac
 .DS_Store
 Thumbs.db
 Desktop.ini
+$RECYCLE.BIN/
 
-# IDE
+# IDE / Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
