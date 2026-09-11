@@ -15,8 +15,12 @@ def derive_seed(passphrase: str, domain_salt: bytes = DEFAULT_PRNG_SALT) -> int:
         salt=domain_salt,
         iterations=PRNG_KDF_ROUNDS,
     )
-    seed_bytes = kdf.derive(passphrase.encode("utf-8"))
-    return int.from_bytes(seed_bytes, "big")
+    seed_buf = bytearray(kdf.derive(passphrase.encode("utf-8")))
+    try:
+        return int.from_bytes(seed_buf, "big")
+    finally:
+        for i in range(len(seed_buf)):
+            seed_buf[i] = 0
 
 
 def build_permutation(seed: int, slot_count: int) -> list[int]:
