@@ -50,7 +50,7 @@ import robust
 
 
 @app.post("/api/encode")
-async def encode(
+def encode(
     carrier: UploadFile = File(...),
     passphrase: str = Form(...),
     message: str = Form(""),
@@ -58,7 +58,7 @@ async def encode(
     bit_depth: int = Form(1),
     mode: str = Form("stealth"),
 ) -> Response:
-    data = await carrier.read()
+    data = carrier.file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="carrier exceeds 50 MB limit")
 
@@ -66,7 +66,7 @@ async def encode(
     bit_depth = max(1, min(4, int(bit_depth)))
 
     if message_file is not None:
-        file_data = await message_file.read()
+        file_data = message_file.file.read()
         filename = message_file.filename or "file.bin"
     else:
         file_data = message.encode("utf-8")
@@ -77,26 +77,11 @@ async def encode(
     if mode == "robust":
         # Robust DCT + Reed-Solomon Mode (JPEG/WhatsApp lossy resistant)
         try:
-            # save carrier to temp memory and encode
-            carrier_buf = io.BytesIO(data)
-            out_buf = io.BytesIO()
-            # Convert text message
             text_to_hide = file_data.decode("utf-8", errors="replace")
-            # We can use robust module directly on PIL images or file paths
-            # Write temp carrier and read
-            temp_in = "_temp_carrier.png"
-            temp_out = "_temp_robust_out.png"
-            image.save(temp_in, "PNG")
-            robust.encode(passphrase, text_to_hide, temp_in, temp_out)
-            with open(temp_out, "rb") as f:
-                out_bytes = f.read()
-            import os
-            for p in [temp_in, temp_out]:
-                if os.path.exists(p):
-                    try:
-                        os.remove(p)
-                    except OSError:
-                        pass
+            result_img = robust.encode_image(passphrase, text_to_hide, image)
+            buffer = io.BytesIO()
+            result_img.save(buffer, "PNG")
+            out_bytes = buffer.getvalue()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         except Exception as exc:
@@ -148,11 +133,11 @@ async def encode(
 
 
 @app.post("/api/decode")
-async def decode(
+def decode(
     carrier: UploadFile = File(...),
     passphrase: str = Form(...),
 ) -> Response:
-    data = await carrier.read()
+    data = carrier.file.read()
     image = _load_image(data)
 
     # 1. First try standard Stealth LSB decode
@@ -165,27 +150,16 @@ async def decode(
             media_type=media_type,
             headers={"X-Filename": quote(filename), "X-Mode": "stealth"},
         )
-    except Exception as lsb_exc:
+    except Exception:
         # 2. If LSB fails, automatically try Robust DCT + Reed-Solomon decode!
         try:
-            import os
-            temp_in = "_temp_decode_carrier.png"
-            image.save(temp_in, "PNG")
-            try:
-                recovered_text = robust.decode(passphrase, temp_in)
-            finally:
-                if os.path.exists(temp_in):
-                    try:
-                        os.remove(temp_in)
-                    except OSError:
-                        pass
+            recovered_text = robust.decode_image(passphrase, image)
             return Response(
                 content=recovered_text.encode("utf-8"),
                 media_type="text/plain; charset=utf-8",
                 headers={"X-Filename": quote("recovered_message.txt"), "X-Mode": "robust"},
             )
         except Exception:
-            # If both fail, raise the original error or descriptive failure
             raise HTTPException(
                 status_code=400,
                 detail="Payload not found or invalid passphrase (checked both LSB Stealth and Robust DCT modes)",
@@ -193,8 +167,8 @@ async def decode(
 
 
 @app.post("/api/inspect")
-async def inspect(image: UploadFile = File(...)) -> JSONResponse:
-    data = await image.read()
+def inspect(image: UploadFile = File(...)) -> JSONResponse:
+    data = image.file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="image exceeds 50 MB limit")
 

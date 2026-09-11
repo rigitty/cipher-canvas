@@ -12,6 +12,7 @@ HEADER_REP = 7
 HEADER_BLOCKS = HEADER_BITS * HEADER_REP  # 112 blocks
 RS_PARITY_BYTES = 32
 DELTA_MODULATION = 45.0
+MAX_SAFE_DIM = 1280
 
 
 def dct2(a: np.ndarray) -> np.ndarray:
@@ -41,18 +42,22 @@ def bits_to_bytes(bits: list[int]) -> bytes:
 
 
 def max_robust_capacity_bytes(width: int, height: int) -> int:
-    bh = height // 8
-    bw = width // 8
-    total_blocks = bh * bw
-    avail_blocks = total_blocks - HEADER_BLOCKS
-    if avail_blocks <= 0:
-        return 0
-    max_ecc_bytes = avail_blocks // 8
-    overhead = RS_PARITY_BYTES + 4 + 4 + 16 + 12 + 16
-    return max(0, max_ecc_bytes - overhead)
+    import capacity
+    return capacity.max_robust_capacity_bytes(width, height)
 
 
-def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -> None:
+def encode_image(passphrase: str, message: str, image: Image.Image) -> Image.Image:
+    w, h = image.size
+    if max(w, h) > MAX_SAFE_DIM:
+        scale = MAX_SAFE_DIM / max(w, h)
+        w = max(8, (int(w * scale) // 8) * 8)
+        h = max(8, (int(h * scale) // 8) * 8)
+        image = image.resize((w, h), Image.Resampling.LANCZOS)
+    elif w % 8 != 0 or h % 8 != 0:
+        w = (w // 8) * 8
+        h = (h // 8) * 8
+        image = image.crop((0, 0, w, h))
+
     sealed = crypto.seal(passphrase, message.encode("utf-8"))
     raw_packet = MAGIC_ROBUST + len(sealed).to_bytes(4, "big") + sealed
 
@@ -68,14 +73,13 @@ def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -
 
     payload_bits = bytes_to_bits(ecc_packet)
 
-    with Image.open(carrier_path) as im:
-        rgb_img = im.convert("RGB")
-        ycbcr = rgb_img.convert("YCbCr")
+    rgb_img = image.convert("RGB")
+    ycbcr = rgb_img.convert("YCbCr")
 
     y, cb, cr = ycbcr.split()
     y_arr = np.array(y, dtype=np.float32)
-    h, w = y_arr.shape
-    bh, bw = h // 8, w // 8
+    h_arr, w_arr = y_arr.shape
+    bh, bw = h_arr // 8, w_arr // 8
     total_blocks = bh * bw
 
     avail_payload_blocks = total_blocks - len(hdr_rep_bits)
@@ -127,13 +131,24 @@ def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -
 
     y_mod = Image.fromarray(np.clip(y_arr, 0, 255).astype(np.uint8), mode="L")
     result_img = Image.merge("YCbCr", (y_mod, cb, cr)).convert("RGB")
+    return result_img
+
+
+def encode(passphrase: str, message: str, carrier_path: str, output_path: str) -> None:
+    with Image.open(carrier_path) as im:
+        result_img = encode_image(passphrase, message, im)
     result_img.save(output_path, "PNG")
 
 
-def decode(passphrase: str, carrier_path: str) -> str:
-    with Image.open(carrier_path) as im:
-        rgb_img = im.convert("RGB")
-        y, _, _ = rgb_img.convert("YCbCr").split()
+def decode_image(passphrase: str, image: Image.Image) -> str:
+    w, h = image.size
+    if w % 8 != 0 or h % 8 != 0:
+        w = (w // 8) * 8
+        h = (h // 8) * 8
+        image = image.crop((0, 0, w, h))
+
+    rgb_img = image.convert("RGB")
+    y, _, _ = rgb_img.convert("YCbCr").split()
 
     y_arr = np.array(y, dtype=np.float32)
     h, w = y_arr.shape
@@ -201,3 +216,8 @@ def decode(passphrase: str, carrier_path: str) -> str:
     sealed = decoded_packet[8 : 8 + sealed_len]
     pt = crypto.open_sealed(passphrase, bytes(sealed))
     return pt.decode("utf-8")
+
+
+def decode(passphrase: str, carrier_path: str) -> str:
+    with Image.open(carrier_path) as im:
+        return decode_image(passphrase, im)

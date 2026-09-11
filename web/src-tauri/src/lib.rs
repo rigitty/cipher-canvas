@@ -58,11 +58,16 @@ async fn save_file(
     Ok(handle.path().to_string_lossy().to_string())
 }
 
+#[tauri::command]
+async fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(BackendState(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![save_file])
+        .invoke_handler(tauri::generate_handler![save_file, read_file_binary])
         .setup(|app| {
             if let Some(icon) = app.default_window_icon() {
                 if let Some(win) = app.get_webview_window("main") {

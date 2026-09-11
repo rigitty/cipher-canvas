@@ -15,14 +15,37 @@ export function capacityBytes(width, height, filenameLength = 0, bitDepth = 1) {
 }
 
 export function capacityRobustBytes(width, height) {
-  const bh = Math.floor(height / 8);
-  const bw = Math.floor(width / 8);
-  const totalBlocks = bh * bw;
-  const availBlocks = totalBlocks - 112;
-  if (availBlocks <= 0) return 0;
-  const maxEccBytes = Math.floor(availBlocks / 8);
-  const overhead = 32 + 4 + 4 + 16 + 12 + 16;
-  return Math.max(0, maxEccBytes - overhead);
+  let w = width;
+  let h = height;
+  if (Math.max(w, h) > 1280) {
+    const scale = 1280 / Math.max(w, h);
+    w = Math.max(8, Math.floor(Math.floor(w * scale) / 8) * 8);
+    h = Math.max(8, Math.floor(Math.floor(h * scale) / 8) * 8);
+  } else {
+    w = Math.floor(w / 8) * 8;
+    h = Math.floor(h / 8) * 8;
+  }
+  const totalBlocks = Math.floor(w / 8) * Math.floor(h / 8);
+  const avail = totalBlocks - 112;
+  if (avail <= 0) return 0;
+  const maxEccBytes = Math.floor(avail / 8);
+
+  let low = 0;
+  let high = maxEccBytes;
+  let ans = 0;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const rawLen = mid + 52;
+    const chunks = rawLen > 0 ? Math.ceil(rawLen / 223) : 1;
+    const eccLen = rawLen + chunks * 32;
+    if (eccLen * 8 <= avail) {
+      ans = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return ans;
 }
 
 export async function healthCheck() {
@@ -115,6 +138,24 @@ export async function inspectImage(file) {
     throw new Error(errorDetail(res, body));
   }
   return res.json();
+}
+
+export async function readNativeFile(filePath) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const bytes = await invoke("read_file_binary", { path: filePath });
+  const uint8 = new Uint8Array(bytes);
+  const baseName = filePath.split(/[/\\]/).pop() || "image.png";
+  const ext = baseName.split(".").pop().toLowerCase();
+  const mimeMap = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+    bmp: "image/bmp",
+    gif: "image/gif",
+  };
+  const mimeType = mimeMap[ext] || "image/png";
+  return new File([uint8], baseName, { type: mimeType });
 }
 
 export async function saveFileNative(fileName, blob, filterName, filterExtensions) {

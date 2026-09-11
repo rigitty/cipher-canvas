@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "./DropZone.jsx";
 import CompareSlider from "./CompareSlider.jsx";
 import EntropyMeter from "./EntropyMeter.jsx";
-import { capacityBytes, capacityRobustBytes, encodeImage, isTauri, saveFileNative } from "../api.js";
+import ProgressBar from "./ProgressBar.jsx";
+import {
+  capacityBytes,
+  capacityRobustBytes,
+  encodeImage,
+  isTauri,
+  saveFileNative,
+} from "../api.js";
 import { buildDiffCanvas, objectUrlFor } from "../imageDiff.js";
 
 async function readImageSize(file) {
@@ -95,7 +102,9 @@ export default function EncodePanel() {
     : passphrase.length === 0
     ? "enter a passphrase"
     : overCapacity
-    ? `message exceeds capacity (${messageBytes} > ${capacity} bytes)`
+    ? mode === "robust"
+      ? `Payload exceeds Robust DCT limit (${messageBytes} > ${capacity} bytes). Switch to Stealth LSB Mode for larger files.`
+      : `Payload exceeds carrier capacity (${messageBytes} > ${capacity} bytes). Increase bit depth or use a larger image.`
     : "";
 
   const canEncode =
@@ -184,6 +193,13 @@ export default function EncodePanel() {
     }
   };
 
+  const encodeStages = [
+    { at: 15, text: "Reading carrier image..." },
+    { at: 40, text: mode === "robust" ? "Encoding DCT blocks & RS-32 ECC..." : "Embedding payload into bit planes..." },
+    { at: 75, text: "Securing with AES-256-GCM..." },
+    { at: 92, text: "Generating output carrier..." },
+  ];
+
   return (
     <div className="panel">
       <section className="panel-section">
@@ -194,11 +210,11 @@ export default function EncodePanel() {
             onClick={() => setMode("stealth")}
           >
             <div className="mode-card-header">
-              <span className="mode-title">🚀 LSB STEALTH MODE</span>
+              <span className="mode-title">LSB STEALTH MODE</span>
               <span className="mode-tag">MAX CAPACITY</span>
             </div>
             <p className="mode-desc">
-              Lossless transmission (PNG or WhatsApp <b>Document</b> mode). Maximum capacity for large files, photos, and high-stealth anti-forensic embedding.
+              High capacity for files &amp; text. Best for lossless transfer (PNG / Document mode).
             </p>
           </div>
 
@@ -207,28 +223,14 @@ export default function EncodePanel() {
             onClick={() => setMode("robust")}
           >
             <div className="mode-card-header">
-              <span className="mode-title">🛡️ ROBUST MODE</span>
+              <span className="mode-title">ROBUST MODE</span>
               <span className="mode-tag">WHATSAPP / JPEG</span>
             </div>
             <p className="mode-desc">
-              DCT frequency domain + Reed-Solomon error correction. Resistant to standard WhatsApp photo compression and lossy JPEG re-compression (Q55-Q95).
+              Protects messages against photo compression (WhatsApp, social media).
             </p>
           </div>
         </div>
-
-        {mode === "robust" && (
-          <div className="robust-info-card">
-            <div className="robust-info-header">
-              <span>🛡️ FREQUENCY DOMAIN (DCT) &amp; REED-SOLOMON PROTECTION ACTIVE</span>
-            </div>
-            <p className="robust-info-text">
-              Payload bits are embedded into 8x8 DCT mid-frequency coefficients with differential modulation and Reed-Solomon ECC. This ensures payload survival even when WhatsApp recompresses the image as a standard photo.
-            </p>
-            <div className="robust-tip-box">
-              💡 <b>Tip:</b> For hiding large files and photos with zero distortion, switch to <b>LSB Stealth Mode</b> and send as a <i>"Document / File"</i> on WhatsApp/Telegram.
-            </div>
-          </div>
-        )}
       </section>
 
       <div className="panel-grid">
@@ -242,7 +244,7 @@ export default function EncodePanel() {
                 {carrierMeta.width} &times; {carrierMeta.height}
               </span>
               <span className={overCapacity ? "meta-warn" : "meta-ok"}>
-                capacity {capacity} bytes {mode === "robust" ? "(DCT Robust)" : `(${bitDepth} LSB)`}
+                capacity {capacity} bytes {mode === "robust" ? "(Robust)" : `(${bitDepth} LSB)`}
               </span>
             </div>
           )}
@@ -270,7 +272,7 @@ export default function EncodePanel() {
           {source === "text" ? (
             <textarea
               className="text-input"
-              rows={7}
+              rows={4}
               placeholder="Type the secret message to hide..."
               value={message}
               onChange={(e) => {
@@ -298,62 +300,76 @@ export default function EncodePanel() {
                 : "Attach a file to hide (image, text, any)..."}
             </button>
           )}
-          <div className="msg-count">
+          <div className={`msg-count ${overCapacity ? "msg-count-warn" : ""}`}>
             {messageBytes} bytes {capacity !== null && ` / ${capacity} max`}
+            {overCapacity && <span style={{ color: "#e74c3c", fontWeight: "bold" }}> (OVER CAPACITY)</span>}
           </div>
         </section>
       </div>
 
-      {mode === "stealth" && (
-        <section className="panel-section">
-          <div className="section-header-row">
-            <h2 className="section-title">BIT DEPTH &amp; CAPACITY SLIDER</h2>
-            <span className="bit-depth-badge">{bitDepth} LSB / CHANNEL</span>
-          </div>
-          <div className="slider-control-row">
-            <input
-              type="range"
-              min="1"
-              max="4"
-              step="1"
-              value={bitDepth}
-              onChange={(e) => setBitDepth(Number(e.target.value))}
-              className="capacity-slider"
-            />
-            <div className="slider-labels">
-              <span className={bitDepth === 1 ? "active" : ""}>1 LSB (Stealth / 100% Invisible)</span>
-              <span className={bitDepth === 2 ? "active" : ""}>2 LSB (High Capacity 2x)</span>
-              <span className={bitDepth === 3 ? "active" : ""}>3 LSB (Dense 3x)</span>
-              <span className={bitDepth === 4 ? "active" : ""}>4 LSB (Maximum 4x)</span>
+      <div className="panel-grid">
+        {mode === "stealth" ? (
+          <section className="panel-section">
+            <div className="section-header-row">
+              <h2 className="section-title">BIT DEPTH &amp; CAPACITY</h2>
+              <span className="bit-depth-badge">{bitDepth} LSB / CHANNEL</span>
             </div>
-          </div>
-        </section>
-      )}
+            <div className="slider-control-row">
+              <input
+                type="range"
+                min="1"
+                max="4"
+                step="1"
+                value={bitDepth}
+                onChange={(e) => setBitDepth(Number(e.target.value))}
+                className="capacity-slider"
+              />
+              <div className="slider-labels">
+                <span className={bitDepth === 1 ? "active" : ""}>1 LSB (Stealth)</span>
+                <span className={bitDepth === 2 ? "active" : ""}>2 LSB (2x)</span>
+                <span className={bitDepth === 3 ? "active" : ""}>3 LSB (3x)</span>
+                <span className={bitDepth === 4 ? "active" : ""}>4 LSB (4x Max)</span>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="panel-section">
+            <div className="section-header-row">
+              <h2 className="section-title">ROBUST PROTECTION</h2>
+              <span className="bit-depth-badge" style={{ background: "rgba(52, 152, 219, 0.2)", color: "#3498db" }}>DCT + RS-32</span>
+            </div>
+            <div className="robust-quick-status">
+              <span>Auto-scaled to 1280px &amp; protected with error correction</span>
+            </div>
+          </section>
+        )}
 
-      <section className="panel-section">
-        <h2 className="section-title">PASSPHRASE</h2>
-        <input
-          type="password"
-          className="text-input single"
-          placeholder="Required to decode the image"
-          value={passphrase}
-          autoComplete="off"
-          onChange={(e) => {
-            setPassphrase(e.target.value);
-            setError("");
-          }}
-        />
-        <EntropyMeter passphrase={passphrase} />
-        <button
-          type="button"
-          className="action-btn"
-          disabled={!canEncode || busy}
-          onClick={submit}
-        >
-          {busy ? "ENCODING..." : "ENCODE IMAGE"}
-        </button>
-        {!busy && disabledHint && <div className="hint-box">{disabledHint}</div>}
-      </section>
+        <section className="panel-section">
+          <h2 className="section-title">PASSPHRASE &amp; ENCRYPTION</h2>
+          <input
+            type="password"
+            className="text-input single"
+            placeholder="Passphrase for AES-256-GCM"
+            value={passphrase}
+            autoComplete="off"
+            onChange={(e) => {
+              setPassphrase(e.target.value);
+              setError("");
+            }}
+          />
+          <EntropyMeter passphrase={passphrase} />
+          <button
+            type="button"
+            className="action-btn"
+            disabled={!canEncode || busy}
+            onClick={submit}
+          >
+            {busy ? "ENCODING CARRIER..." : "ENCODE CARRIER"}
+          </button>
+          <ProgressBar busy={busy} stages={encodeStages} />
+          {!busy && disabledHint && <div className="hint-box">{disabledHint}</div>}
+        </section>
+      </div>
 
       {error && <div className="error-box">{error}</div>}
 
@@ -416,7 +432,7 @@ export default function EncodePanel() {
                   onClick={copyImageToClipboard}
                   title="Copy encoded PNG image to system clipboard"
                 >
-                  📋 COPY TO CLIPBOARD
+                  COPY TO CLIPBOARD
                 </button>
               </div>
               {saveNote && <div className="hint-box">{saveNote}</div>}

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import DropZone from "./DropZone.jsx";
 import EntropyMeter from "./EntropyMeter.jsx";
+import ProgressBar from "./ProgressBar.jsx";
 import { decodeImage, isTauri, saveFileNative } from "../api.js";
 
 export default function DecodePanel() {
@@ -17,6 +18,13 @@ export default function DecodePanel() {
 
   const canDecode = carrier && passphrase.length > 0;
   const isImage = result !== null && result.type.startsWith("image/");
+
+  const decodeStages = [
+    { at: 20, text: "Reading carrier image..." },
+    { at: 50, text: "Scanning stealth bits & DCT blocks..." },
+    { at: 75, text: "Decrypting payload with passphrase..." },
+    { at: 92, text: "Extracting secret message / file..." },
+  ];
 
   const submit = async () => {
     setBusy(true);
@@ -65,47 +73,53 @@ export default function DecodePanel() {
 
   return (
     <div className="panel">
-      <section className="panel-section">
-        <h2 className="section-title">CARRIER IMAGE</h2>
-        <DropZone
-          file={carrier}
-          onFile={(f) => {
-            setCarrier(f);
-            setError("");
-            setResult(null);
-          }}
-          label="Select the encoded image"
-        />
-        {carrier && (
-          <div className="file-meta">
-            <span>{carrier.name}</span>
-          </div>
-        )}
-      </section>
+      <div className="panel-grid">
+        <section className="panel-section">
+          <h2 className="section-title">CARRIER IMAGE</h2>
+          <DropZone
+            file={carrier}
+            onFile={(f) => {
+              setCarrier(f);
+              setError("");
+              setResult(null);
+            }}
+            label="Select the encoded image"
+          />
+          {carrier && (
+            <div className="file-meta">
+              <span>{carrier.name}</span>
+            </div>
+          )}
+        </section>
 
-      <section className="panel-section">
-        <h2 className="section-title">PASSPHRASE</h2>
-        <input
-          type="password"
-          className="text-input single"
-          placeholder="Passphrase used during encoding"
-          value={passphrase}
-          autoComplete="off"
-          onChange={(e) => {
-            setPassphrase(e.target.value);
-            setError("");
-          }}
-        />
-        <EntropyMeter passphrase={passphrase} />
-        <button
-          type="button"
-          className="action-btn"
-          disabled={!canDecode || busy}
-          onClick={submit}
-        >
-          {busy ? "DECODING..." : "DECODE IMAGE"}
-        </button>
-      </section>
+        <section className="panel-section">
+          <h2 className="section-title">PASSPHRASE &amp; DECRYPTION</h2>
+          <input
+            type="password"
+            className="text-input single"
+            placeholder="Passphrase used during encoding"
+            value={passphrase}
+            autoComplete="off"
+            onChange={(e) => {
+              setPassphrase(e.target.value);
+              setError("");
+            }}
+          />
+          <EntropyMeter passphrase={passphrase} />
+          <button
+            type="button"
+            className="action-btn"
+            disabled={!canDecode || busy}
+            onClick={submit}
+          >
+            {busy ? "DECODING CARRIER..." : "DECODE CARRIER"}
+          </button>
+          <ProgressBar busy={busy} stages={decodeStages} />
+          <div className="robust-tip-box" style={{ marginTop: "8px" }}>
+            Auto-detects both <b>Stealth</b> and <b>Robust</b> carriers.
+          </div>
+        </section>
+      </div>
 
       {error && <div className="error-box">{error}</div>}
 

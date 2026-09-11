@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DropZone from "./DropZone.jsx";
+import ProgressBar from "./ProgressBar.jsx";
 import { inspectImage } from "../api.js";
 
 export default function InspectPanel() {
@@ -8,6 +9,13 @@ export default function InspectPanel() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [activeView, setActiveView] = useState("lsb"); // "lsb" or "original"
+
+  const inspectStages = [
+    { at: 20, text: "Reading image bit planes..." },
+    { at: 50, text: "Computing Chi-Square distribution..." },
+    { at: 80, text: "Analyzing pixel pair anomalies..." },
+    { at: 92, text: "Generating forensic report..." },
+  ];
 
   const runInspect = async (fileToInspect) => {
     const target = fileToInspect || image;
@@ -36,44 +44,33 @@ export default function InspectPanel() {
 
   return (
     <div className="panel">
-      <section className="panel-section">
-        <h2 className="section-title">CARRIER FORENSIC INSPECTION</h2>
-        <p className="panel-hint">
-          Drop any suspicious or encoded image to run Chi-Square Pairs-of-Values (PoV)
-          steganalysis and isolate its Least Significant Bit (LSB) plane.
-        </p>
+      <div className="panel-grid">
+        <section className="panel-section">
+          <h2 className="section-title">CARRIER FORENSIC INSPECTION</h2>
+          <DropZone
+            file={image}
+            onFile={handleFile}
+            label="Select or drop image to inspect"
+          />
 
-        <DropZone
-          file={image}
-          onFile={handleFile}
-          label="Select or drop image to inspect"
-        />
+          {image && (
+            <div className="inspect-actions">
+              <button
+                type="button"
+                className="action-btn"
+                disabled={busy}
+                onClick={() => runInspect(image)}
+              >
+                {busy ? "ANALYZING..." : "RE-ANALYZE CARRIER"}
+              </button>
+              <ProgressBar busy={busy} stages={inspectStages} />
+            </div>
+          )}
 
-        {image && (
-          <div className="inspect-actions">
-            <button
-              type="button"
-              className="action-btn"
-              disabled={busy}
-              onClick={() => runInspect(image)}
-            >
-              {busy ? "ANALYZING BIT PLANES..." : "RE-ANALYZE CARRIER"}
-            </button>
-          </div>
-        )}
+          {error && <div className="error-banner">{error}</div>}
+        </section>
 
-        {error && <div className="error-banner">{error}</div>}
-      </section>
-
-      {busy && (
-        <div className="inspect-loading">
-          <div className="spinner" />
-          <span>Computing Pairs-of-Values chi-square distributions &amp; slicing bit planes...</span>
-        </div>
-      )}
-
-      {result && (
-        <>
+        {result && (
           <section className="panel-section inspect-results-section">
             <h2 className="section-title">STEGANALYSIS VERDICT</h2>
 
@@ -106,25 +103,29 @@ export default function InspectPanel() {
 
               <div className="stats-grid">
                 <div className="stat-card">
-                  <span className="stat-title">RED CHANNEL &chi;&sup2;/df</span>
+                  <span className="stat-title">RED CHANNEL</span>
                   <span className="stat-val">{result.chi_square_per_df.red}</span>
                 </div>
                 <div className="stat-card">
-                  <span className="stat-title">GREEN CHANNEL &chi;&sup2;/df</span>
+                  <span className="stat-title">GREEN CHANNEL</span>
                   <span className="stat-val">{result.chi_square_per_df.green}</span>
                 </div>
                 <div className="stat-card">
-                  <span className="stat-title">BLUE CHANNEL &chi;&sup2;/df</span>
+                  <span className="stat-title">BLUE CHANNEL</span>
                   <span className="stat-val">{result.chi_square_per_df.blue}</span>
                 </div>
                 <div className="stat-card">
-                  <span className="stat-title">AVERAGE &chi;&sup2;/df</span>
+                  <span className="stat-title">AVERAGE</span>
                   <span className="stat-val highlight">{result.chi_square_per_df.average}</span>
                 </div>
               </div>
             </div>
           </section>
+        )}
+      </div>
 
+      {result && (
+        <>
           <section className="panel-section">
             <div className="section-header-row">
               <h2 className="section-title">BIT PLANE VISUALIZER (LSB PLANE)</h2>
@@ -134,7 +135,7 @@ export default function InspectPanel() {
                   className={`toggle-btn ${activeView === "lsb" ? "active" : ""}`}
                   onClick={() => setActiveView("lsb")}
                 >
-                  LSB BIT PLANE (0th BIT)
+                  LSB BIT PLANE
                 </button>
                 <button
                   type="button"
@@ -155,13 +156,13 @@ export default function InspectPanel() {
                     className="bit-plane-img"
                   />
                   <div className="bit-plane-legend">
-                    <span>&bull; White (1) / Black (0): Raw isolated Least Significant Bit values</span>
+                    <span>LSB bit plane map — reveals hidden patterns if unscattered</span>
                     <a
                       href={result.lsb_preview}
                       download="lsb-bit-plane.png"
                       className="download-link"
                     >
-                      Export Bit Plane
+                      Export Map
                     </a>
                   </div>
                 </div>

@@ -1,22 +1,49 @@
 import { useEffect, useRef, useState } from "react";
+import { isTauri, readNativeFile } from "../api.js";
+
+const IMAGE_EXT_REGEX = /\.(png|jpe?g|bmp|webp|gif|tiff?)$/i;
 
 export default function DropZone({ file, onFile, label }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
+  const dropzoneRef = useRef(null);
 
   const readFile = (f) => {
     if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      alert(`${f.name} is not an image file`);
+    const isImg = (f.type && f.type.startsWith("image/")) || IMAGE_EXT_REGEX.test(f.name);
+    if (!isImg) {
+      alert(`${f.name} is not a supported image file`);
       return;
     }
     onFile(f);
   };
 
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+  };
+
+  const onDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+  };
+
+  const onDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+  };
+
   const onDrop = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragging(false);
-    readFile(e.dataTransfer.files[0]);
+    const droppedFiles = e.dataTransfer?.files;
+    if (droppedFiles && droppedFiles.length > 0) {
+      readFile(droppedFiles[0]);
+    }
   };
 
   const handlePasteEvent = (e) => {
@@ -51,24 +78,66 @@ export default function DropZone({ file, onFile, label }) {
       }
       alert("No image found in clipboard. Use Ctrl+V or copy an image first.");
     } catch {
-      alert("Clipboard access denied or unavailable. Press Ctrl+V directly.");
+      alert("Clipboard access unavailable. Press Ctrl+V directly.");
     }
   };
 
   useEffect(() => {
     window.addEventListener("paste", handlePasteEvent);
-    return () => window.removeEventListener("paste", handlePasteEvent);
+
+    // Window-level drag suppression
+    const preventWindowDrag = (e) => {
+      e.preventDefault();
+    };
+    window.addEventListener("dragover", preventWindowDrag);
+    window.addEventListener("drop", preventWindowDrag);
+
+    // Tauri native file drag-drop listener
+    let unlistenTauri = null;
+    if (isTauri()) {
+      import("@tauri-apps/api/webviewWindow")
+        .then(({ getCurrentWebviewWindow }) => {
+          return getCurrentWebviewWindow().onDragDropEvent((event) => {
+            if (event.payload.type === "over") {
+              setDragging(true);
+            } else if (event.payload.type === "leave" || event.payload.type === "cancel") {
+              setDragging(false);
+            } else if (event.payload.type === "drop") {
+              setDragging(false);
+              const paths = event.payload.paths;
+              if (paths && paths.length > 0) {
+                const targetPath = paths[0];
+                if (IMAGE_EXT_REGEX.test(targetPath)) {
+                  readNativeFile(targetPath)
+                    .then(onFile)
+                    .catch((err) => console.error("failed reading dropped file:", err));
+                }
+              }
+            }
+          });
+        })
+        .then((fn) => {
+          unlistenTauri = fn;
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener("paste", handlePasteEvent);
+      window.removeEventListener("dragover", preventWindowDrag);
+      window.removeEventListener("drop", preventWindowDrag);
+      if (unlistenTauri) unlistenTauri();
+    };
   }, []);
 
   return (
     <div
+      ref={dropzoneRef}
       className={`dropzone ${dragging ? "is-dragging" : ""}`}
       onClick={() => inputRef.current?.click()}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragging(true);
-      }}
-      onDragLeave={() => setDragging(false)}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
       onDrop={onDrop}
       role="button"
       tabIndex={0}
@@ -108,7 +177,7 @@ export default function DropZone({ file, onFile, label }) {
             onClick={handleClipboardClick}
             title="Paste image from system clipboard"
           >
-            📋 PASTE FROM CLIPBOARD
+            PASTE FROM CLIPBOARD
           </button>
         </div>
       )}
