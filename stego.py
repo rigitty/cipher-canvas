@@ -1,4 +1,5 @@
 import math
+import numpy as np
 from PIL import Image
 
 import crypto
@@ -78,91 +79,82 @@ def unpack_payload(payload: bytes) -> tuple[str, bytes]:
     return filename, parts[1]
 
 
-def _normalize_image(image: Image.Image) -> Image.Image:
+def _normalize_image(image: Image.Image) -> tuple[Image.Image, bool]:
     if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
-        return image.convert("RGBA")
-    return image.convert("RGB")
+        return image.convert("RGBA"), True
+    return image.convert("RGB"), False
 
 
-def _get_slots(image: Image.Image) -> tuple[list[tuple[int, int]], bool, list]:
-    image = _normalize_image(image)
-    is_rgba = image.mode == "RGBA"
-    pixels = list(image.get_flattened_data())
-    slots: list[tuple[int, int]] = []
-
+def _get_slot_indices(arr: np.ndarray, is_rgba: bool) -> np.ndarray:
     if is_rgba:
-        for p_idx, p in enumerate(pixels):
-            # Alpha preservation: only embed in visible pixels (alpha >= 10)
-            if p[3] >= 10:
-                slots.append((p_idx, 0))
-                slots.append((p_idx, 1))
-                slots.append((p_idx, 2))
-    else:
-        for p_idx in range(len(pixels)):
-            slots.append((p_idx, 0))
-            slots.append((p_idx, 1))
-            slots.append((p_idx, 2))
-
-    return slots, is_rgba, pixels
+        alpha = arr[:, :, 3].reshape(-1)
+        valid_pixels = np.where(alpha >= 10)[0]
+        slot_indices = np.empty((len(valid_pixels), 3), dtype=np.int64)
+        slot_indices[:, 0] = valid_pixels * 4
+        slot_indices[:, 1] = valid_pixels * 4 + 1
+        slot_indices[:, 2] = valid_pixels * 4 + 2
+        return slot_indices.reshape(-1)
+    return np.arange(arr.size, dtype=np.int64)
 
 
 def _embed_bytes(
     passphrase: str, payload: bytes, image: Image.Image, bit_depth: int = 1
 ) -> tuple[Image.Image, int]:
     bit_depth = max(1, min(4, int(bit_depth)))
+    norm_img, is_rgba = _normalize_image(image)
+    arr = np.array(norm_img, dtype=np.uint8)
+    flat_arr = arr.reshape(-1)
+    slot_flat_indices = _get_slot_indices(arr, is_rgba)
+
     sealed = crypto.seal(passphrase, payload)
     header = MAGIC + bytes([bit_depth]) + len(sealed).to_bytes(4, "big")
-    header_bits = bytes_to_bits(header)
-    payload_chunks = bytes_to_chunked_bits(sealed, bit_depth)
+    header_bits = np.array(bytes_to_bits(header), dtype=np.uint8)
+    payload_chunks = np.array(bytes_to_chunked_bits(sealed, bit_depth), dtype=np.uint8)
 
-    slots, is_rgba, pixels = _get_slots(image)
     needed_slots = len(header_bits) + len(payload_chunks)
-
-    if needed_slots > len(slots):
+    if needed_slots > len(slot_flat_indices):
         raise ValueError(
-            f"payload too large: needs {needed_slots} slots, have {len(slots)} available slots"
+            f"payload too large: needs {needed_slots} slots, have {len(slot_flat_indices)} available slots"
         )
 
-    order = prng.build_permutation(prng.derive_seed(passphrase), len(slots))
+    order = np.array(
+        prng.build_permutation(prng.derive_seed(passphrase), len(slot_flat_indices)),
+        dtype=np.int64,
+    )
 
     # 1. Embed header (always 1 bit per slot for universal detection)
-    for i, bit in enumerate(header_bits):
-        slot_idx = order[i]
-        p_idx, ch = slots[slot_idx]
-        px = list(pixels[p_idx])
-        px[ch] = lsb.embed_bit(px[ch], bit)
-        pixels[p_idx] = tuple(px)
+    h_slots = slot_flat_indices[order[: len(header_bits)]]
+    flat_arr[h_slots] = (flat_arr[h_slots] & 0xFE) | header_bits
 
     # 2. Embed payload with chosen bit_depth per slot
-    for i, chunk in enumerate(payload_chunks):
-        slot_idx = order[len(header_bits) + i]
-        p_idx, ch = slots[slot_idx]
-        px = list(pixels[p_idx])
-        px[ch] = lsb.embed_bits(px[ch], chunk, bit_depth)
-        pixels[p_idx] = tuple(px)
+    p_slots = slot_flat_indices[order[len(header_bits) : needed_slots]]
+    mask = (~((1 << bit_depth) - 1)) & 0xFF
+    flat_arr[p_slots] = (flat_arr[p_slots] & mask) | payload_chunks
 
     mode = "RGBA" if is_rgba else "RGB"
-    out = Image.new(mode, image.size)
-    out.putdata(pixels)
+    out = Image.fromarray(arr, mode=mode)
     total_bits = len(header_bits) + len(payload_chunks) * bit_depth
     return out, total_bits
 
 
 def _extract_bytes(passphrase: str, image: Image.Image) -> bytes:
-    slots, is_rgba, pixels = _get_slots(image)
-    if len(slots) < 64:
+    norm_img, is_rgba = _normalize_image(image)
+    arr = np.array(norm_img, dtype=np.uint8)
+    flat_arr = arr.reshape(-1)
+    slot_flat_indices = _get_slot_indices(arr, is_rgba)
+
+    if len(slot_flat_indices) < 64:
         raise ValueError("carrier image too small for stego header")
 
-    order = prng.build_permutation(prng.derive_seed(passphrase), len(slots))
+    order = np.array(
+        prng.build_permutation(prng.derive_seed(passphrase), len(slot_flat_indices)),
+        dtype=np.int64,
+    )
 
     # Lazy read: extract first 72 bits to check v2 header (or 64 for v1 fallback)
-    header_bits = []
-    read_limit = min(72, len(slots))
-    for i in range(read_limit):
-        slot_idx = order[i]
-        p_idx, ch = slots[slot_idx]
-        header_bits.append(lsb.extract_bit(pixels[p_idx][ch]))
-
+    read_limit = min(72, len(slot_flat_indices))
+    h_slots = slot_flat_indices[order[:read_limit]]
+    header_bits = list(flat_arr[h_slots] & 0x01)
     header_bytes = bits_to_bytes(header_bits)
 
     if header_bytes[:4] == MAGIC:
@@ -179,14 +171,12 @@ def _extract_bytes(passphrase: str, image: Image.Image) -> bytes:
         raise ValueError("header magic not found (wrong passphrase or image is not a carrier)")
 
     needed_chunks = math.ceil(sealed_len * 8 / bit_depth)
-    if header_slots + needed_chunks > len(slots):
+    if header_slots + needed_chunks > len(slot_flat_indices):
         raise ValueError("corrupted length in header (exceeds available image slots)")
 
-    chunks: list[int] = []
-    for i in range(needed_chunks):
-        slot_idx = order[header_slots + i]
-        p_idx, ch = slots[slot_idx]
-        chunks.append(lsb.extract_bits(pixels[p_idx][ch], bit_depth))
+    p_slots = slot_flat_indices[order[header_slots : header_slots + needed_chunks]]
+    mask = (1 << bit_depth) - 1
+    chunks = list(flat_arr[p_slots] & mask)
 
     sealed = chunked_bits_to_bytes(chunks, bit_depth, sealed_len)
     return crypto.open_sealed(passphrase, sealed)

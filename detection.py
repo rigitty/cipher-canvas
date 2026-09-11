@@ -8,13 +8,10 @@ import stego
 
 def generate_lsb_plane(image: Image.Image) -> str:
     rgb = image.convert("RGB")
-    pixels = list(rgb.get_flattened_data())
+    arr = np.array(rgb, dtype=np.uint8)
+    plane_data = ((arr[:, :, 0] & 1) | (arr[:, :, 1] & 1) | (arr[:, :, 2] & 1)) * np.uint8(255)
+    plane_img = Image.fromarray(plane_data, mode="L")
     width, height = rgb.size
-    plane_data = bytearray(width * height)
-    for i, p in enumerate(pixels):
-        val = ((p[0] & 1) | (p[1] & 1) | (p[2] & 1)) * 255
-        plane_data[i] = val
-    plane_img = Image.frombytes("L", (width, height), bytes(plane_data))
     if max(width, height) > 800:
         scale = 800 / max(width, height)
         plane_img = plane_img.resize(
@@ -26,25 +23,19 @@ def generate_lsb_plane(image: Image.Image) -> str:
 
 
 def analyze_image(image: Image.Image) -> dict:
-    import numpy as np
-
     rgb = image.convert("RGB")
+    arr = np.array(rgb, dtype=np.uint8)
     width, height = rgb.size
-    total_pixels = width * height
-    pixels = list(rgb.get_flattened_data())
 
     # 1. Pairs-of-Values (PoV) Chi-Square per channel
     channel_stats = []
     for ch in range(3):
-        stat = pov_chisq_per_df(pixels, ch, total_pixels)
+        stat = pov_chisq_per_df(arr[:, :, ch])
         channel_stats.append(round(stat, 3))
 
     avg_stat = sum(channel_stats) / len(channel_stats)
 
     # 2. Multi-Plane Spatial Autocorrelation (Planes 0, 1, 2, 3)
-    # Natural images: bit planes 1..3 have strong neighbor correlation (>0.70..0.95).
-    # Multi-bit stego (2..4 LSB): planes 1..3 become pure random noise (~0.5000 match rate).
-    arr = np.array(rgb, dtype=np.uint8)
     plane_corrs = []
     for plane in range(4):
         bits = (arr >> plane) & 1
@@ -63,7 +54,6 @@ def analyze_image(image: Image.Image) -> dict:
     p0_randomness = float(max(0.0, 1.0 - (max(0.0, p0_match - 0.50) / 0.08)) if p0_match > 0.50 else 1.0)
 
     # Assess Chi-Square Equalization:
-    # Near 1.0 indicates artificial equalization ONLY when carrier is not flat/synthetic
     unique_colors = len(np.unique(arr.reshape(-1, 3), axis=0))
     is_flat_or_synthetic = unique_colors < 500 or avg_stat > 500
 
@@ -129,31 +119,32 @@ def analyze_image(image: Image.Image) -> dict:
     }
 
 
-def pov_chisq_per_df(pixels: list, channel: int, count: int) -> float:
-    histogram = [0] * 256
-    for pixel in pixels[:count]:
-        histogram[pixel[channel]] += 1
-    stat = 0.0
-    degrees_of_freedom = 0
-    for k in range(0, 256, 2):
-        pair_sum = histogram[k] + histogram[k + 1]
-        if pair_sum == 0:
-            continue
-        expected = pair_sum / 2
-        stat += (histogram[k] - expected) ** 2 / expected
-        stat += (histogram[k + 1] - expected) ** 2 / expected
-        degrees_of_freedom += 1
-    return stat / degrees_of_freedom
+def pov_chisq_per_df(channel_arr: np.ndarray) -> float:
+    flat = channel_arr.reshape(-1)
+    histogram = np.bincount(flat, minlength=256)
+    evens = histogram[0::2].astype(np.float64)
+    odds = histogram[1::2].astype(np.float64)
+    pair_sums = evens + odds
+    nonzero = pair_sums > 0
+    if not np.any(nonzero):
+        return 0.0
+    expected = pair_sums[nonzero] / 2.0
+    stat = np.sum((evens[nonzero] - expected) ** 2 / expected) + np.sum(
+        (odds[nonzero] - expected) ** 2 / expected
+    )
+    df = np.sum(nonzero)
+    return float(stat / df) if df > 0 else 0.0
 
 
 def pov_profile(path: str, channel: int = 0, step: int = 5) -> list[tuple[int, float]]:
     image = Image.open(path).convert("RGB")
-    pixels = list(image.get_flattened_data())
-    total = len(pixels)
+    arr = np.array(image, dtype=np.uint8)[:, :, channel]
+    flat = arr.reshape(-1)
+    total = len(flat)
     profile = []
     for pct in range(step, 101, step):
         count = int(total * pct / 100)
-        profile.append((pct, pov_chisq_per_df(pixels, channel, count)))
+        profile.append((pct, pov_chisq_per_df(flat[:count])))
     return profile
 
 
@@ -168,15 +159,16 @@ def deviation_from_baseline(
 def change_locations(clean_path: str, stego_path: str, row_bins: int = 10) -> list[int]:
     clean = Image.open(clean_path).convert("RGB")
     stego_image = Image.open(stego_path).convert("RGB")
-    width, height = clean.size
+    clean_arr = np.array(clean, dtype=np.uint8)
+    stego_arr = np.array(stego_image, dtype=np.uint8)
+    diff_mask = np.any(clean_arr != stego_arr, axis=2)
+    height, width = diff_mask.shape
     bins = [0] * row_bins
-    clean_pixels = list(clean.get_flattened_data())
-    stego_pixels = list(stego_image.get_flattened_data())
-    for index, (a, b) in enumerate(zip(clean_pixels, stego_pixels)):
-        if a != b:
-            row = index // width
+    for row in range(height):
+        changes = int(np.sum(diff_mask[row, :]))
+        if changes > 0:
             bin_index = min(row * row_bins // height, row_bins - 1)
-            bins[bin_index] += 1
+            bins[bin_index] += changes
     return bins
 
 
