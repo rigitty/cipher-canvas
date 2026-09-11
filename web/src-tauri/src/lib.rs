@@ -64,6 +64,11 @@ pub fn run() {
         .manage(BackendState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![save_file])
         .setup(|app| {
+            if let Some(icon) = app.default_window_icon() {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.set_icon(icon.clone());
+                }
+            }
             let child = spawn_backend();
             if child.is_none() {
                 eprintln!("warning: failed to start the python engine server");

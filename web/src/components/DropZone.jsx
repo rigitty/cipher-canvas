@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function DropZone({ file, onFile, label }) {
   const [dragging, setDragging] = useState(false);
@@ -18,6 +18,47 @@ export default function DropZone({ file, onFile, label }) {
     setDragging(false);
     readFile(e.dataTransfer.files[0]);
   };
+
+  const handlePasteEvent = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const pastedFile = item.getAsFile();
+        if (pastedFile) {
+          e.preventDefault();
+          readFile(pastedFile);
+          return;
+        }
+      }
+    }
+  };
+
+  const handleClipboardClick = async (e) => {
+    e.stopPropagation();
+    try {
+      if (navigator.clipboard?.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find((t) => t.startsWith("image/"));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            const pastedFile = new File([blob], "pasted-image.png", { type: imageType });
+            readFile(pastedFile);
+            return;
+          }
+        }
+      }
+      alert("No image found in clipboard. Use Ctrl+V or copy an image first.");
+    } catch {
+      alert("Clipboard access denied or unavailable. Press Ctrl+V directly.");
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener("paste", handlePasteEvent);
+    return () => window.removeEventListener("paste", handlePasteEvent);
+  }, []);
 
   return (
     <div
@@ -43,7 +84,12 @@ export default function DropZone({ file, onFile, label }) {
         onChange={(e) => readFile(e.target.files[0])}
       />
       {file ? (
-        <img className="dropzone-preview" src={URL.createObjectURL(file)} alt="carrier preview" />
+        <img
+          className="dropzone-preview"
+          src={URL.createObjectURL(file)}
+          alt="carrier preview"
+          draggable={true}
+        />
       ) : (
         <div className="dropzone-empty">
           <img
@@ -53,7 +99,17 @@ export default function DropZone({ file, onFile, label }) {
             draggable={false}
           />
           <span className="dropzone-label-title">{label}</span>
-          <small className="dropzone-subhint">Drag &amp; drop carrier image or click to browse</small>
+          <small className="dropzone-subhint">
+            Drag &amp; drop carrier image, click to browse, or press <code>Ctrl+V</code>
+          </small>
+          <button
+            type="button"
+            className="paste-clipboard-btn"
+            onClick={handleClipboardClick}
+            title="Paste image from system clipboard"
+          >
+            📋 PASTE FROM CLIPBOARD
+          </button>
         </div>
       )}
     </div>

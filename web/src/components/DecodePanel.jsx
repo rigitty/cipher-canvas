@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import DropZone from "./DropZone.jsx";
+import EntropyMeter from "./EntropyMeter.jsx";
 import { decodeImage, isTauri, saveFileNative } from "../api.js";
 
 export default function DecodePanel() {
@@ -95,6 +96,7 @@ export default function DecodePanel() {
             setError("");
           }}
         />
+        <EntropyMeter passphrase={passphrase} />
         <button
           type="button"
           className="action-btn"

@@ -129,6 +129,37 @@ def test_tiny_image() -> None:
     expect_error("tiny image (no room for header) rejected", encode_tiny)
 
 
+def test_bit_depths() -> None:
+    for b in [1, 2, 3, 4]:
+        width, height = Image.open("sample.png").size
+        limit = capacity.max_plaintext_bytes(
+            width, height, filename_length=len("message.txt"), bit_depth=b
+        )
+        msg = f"Bit depth {b} test: " + ("x" * min(limit, 200))
+        stego.encode(PASSPHRASE, msg, "sample.png", "_verify_out.png", bit_depth=b)
+        recovered = stego.decode(PASSPHRASE, "_verify_out.png")
+        assert recovered == msg, f"bit_depth {b} roundtrip failed"
+        print(f"PASS variable bit depth {b}/4: capacity = {limit} bytes")
+
+
+def test_alpha_preservation() -> None:
+    rgba = Image.new("RGBA", (100, 100), (40, 80, 120, 255))
+    # Make top 20 rows completely transparent (alpha = 0)
+    for y in range(20):
+        for x in range(100):
+            rgba.putpixel((x, y), (0, 0, 0, 0))
+    rgba.save("_verify_rgba.png")
+
+    msg = "Alpha transparency preserved perfectly!"
+    stego.encode(PASSPHRASE, msg, "_verify_rgba.png", "_verify_rgba_out.png")
+    out = Image.open("_verify_rgba_out.png")
+    assert out.mode == "RGBA", "RGBA mode was not preserved"
+    assert out.getpixel((10, 10)) == (0, 0, 0, 0), "Transparent pixels were modified"
+    recovered = stego.decode(PASSPHRASE, "_verify_rgba_out.png")
+    assert recovered == msg, "RGBA roundtrip failed"
+    print("PASS alpha preservation: transparency untouched and preserved in RGBA PNG")
+
+
 if __name__ == "__main__":
     test_unicode()
     test_empty_message()
@@ -139,4 +170,6 @@ if __name__ == "__main__":
     test_tampered_carrier()
     test_tiny_image()
     test_hide_image()
+    test_bit_depths()
+    test_alpha_preservation()
     print("ALL EDGE-CASE TESTS PASSED")

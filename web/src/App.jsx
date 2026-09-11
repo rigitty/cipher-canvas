@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import TitleBar from "./components/TitleBar.jsx";
 import EncodePanel from "./components/EncodePanel.jsx";
 import DecodePanel from "./components/DecodePanel.jsx";
+import InspectPanel from "./components/InspectPanel.jsx";
 import { healthCheck } from "./api.js";
 
 export default function App() {
@@ -59,6 +60,13 @@ export default function App() {
         >
           DECODE
         </button>
+        <button
+          type="button"
+          className={`tab ${tab === "inspect" ? "active" : ""}`}
+          onClick={() => setTab("inspect")}
+        >
+          INSPECT (STEGANALYSIS)
+        </button>
       </nav>
       {engine === "offline" && (
         <div className="offline-banner">
@@ -67,7 +75,13 @@ export default function App() {
         </div>
       )}
       <main className="content">
-        {tab === "encode" ? <EncodePanel /> : <DecodePanel />}
+        {tab === "encode" ? (
+          <EncodePanel />
+        ) : tab === "decode" ? (
+          <DecodePanel />
+        ) : (
+          <InspectPanel />
+        )}
       </main>
       <footer className="statusbar">
         <span className="engine-dot" data-status={engine} />

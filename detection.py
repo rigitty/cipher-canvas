@@ -1,7 +1,132 @@
+import io
+import base64
 from PIL import Image
 from scipy.stats import chi2
 
 import stego
+
+
+def generate_lsb_plane(image: Image.Image) -> str:
+    rgb = image.convert("RGB")
+    pixels = list(rgb.get_flattened_data())
+    width, height = rgb.size
+    plane_data = bytearray(width * height)
+    for i, p in enumerate(pixels):
+        val = ((p[0] & 1) | (p[1] & 1) | (p[2] & 1)) * 255
+        plane_data[i] = val
+    plane_img = Image.frombytes("L", (width, height), bytes(plane_data))
+    if max(width, height) > 800:
+        scale = 800 / max(width, height)
+        plane_img = plane_img.resize(
+            (int(width * scale), int(height * scale)), Image.Resampling.NEAREST
+        )
+    buf = io.BytesIO()
+    plane_img.save(buf, "PNG")
+    return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('ascii')}"
+
+
+def analyze_image(image: Image.Image) -> dict:
+    import numpy as np
+
+    rgb = image.convert("RGB")
+    width, height = rgb.size
+    total_pixels = width * height
+    pixels = list(rgb.get_flattened_data())
+
+    # 1. Pairs-of-Values (PoV) Chi-Square per channel
+    channel_stats = []
+    for ch in range(3):
+        stat = pov_chisq_per_df(pixels, ch, total_pixels)
+        channel_stats.append(round(stat, 3))
+
+    avg_stat = sum(channel_stats) / len(channel_stats)
+
+    # 2. Multi-Plane Spatial Autocorrelation (Planes 0, 1, 2, 3)
+    # Natural images: bit planes 1..3 have strong neighbor correlation (>0.70..0.95).
+    # Multi-bit stego (2..4 LSB): planes 1..3 become pure random noise (~0.5000 match rate).
+    arr = np.array(rgb, dtype=np.uint8)
+    plane_corrs = []
+    for plane in range(4):
+        bits = (arr >> plane) & 1
+        match_h = float(np.mean(bits[:, :-1, :] == bits[:, 1:, :]))
+        match_v = float(np.mean(bits[:-1, :, :] == bits[1:, :, :]))
+        plane_corrs.append((match_h + match_v) / 2.0)
+
+    # Higher-plane noise anomaly (indicates 2..4 LSB steganography)
+    p1_anomaly = max(0.0, 1.0 - (max(0.0, plane_corrs[1] - 0.50) / 0.15))
+    p2_anomaly = max(0.0, 1.0 - (max(0.0, plane_corrs[2] - 0.50) / 0.20))
+    p3_anomaly = max(0.0, 1.0 - (max(0.0, plane_corrs[3] - 0.25) / 0.25))
+    multibit_anomaly = float(p1_anomaly * 0.40 + p2_anomaly * 0.35 + p3_anomaly * 0.25)
+
+    # LSB Plane 0 Randomness vs Structure (Photos typically 0.58 - 0.85; Stego ~ 0.500)
+    p0_match = plane_corrs[0]
+    p0_randomness = float(max(0.0, 1.0 - (max(0.0, p0_match - 0.50) / 0.08)) if p0_match > 0.50 else 1.0)
+
+    # Assess Chi-Square Equalization:
+    # Near 1.0 indicates artificial equalization ONLY when carrier is not flat/synthetic
+    unique_colors = len(np.unique(arr.reshape(-1, 3), axis=0))
+    is_flat_or_synthetic = unique_colors < 500 or avg_stat > 500
+
+    if is_flat_or_synthetic:
+        pov_anomaly = 0.0
+    elif 0.85 <= avg_stat <= 1.25:
+        pov_anomaly = float(1.0 - abs(avg_stat - 1.0) / 0.25)
+    elif (0.70 <= avg_stat < 0.85) or (1.25 < avg_stat <= 1.80):
+        pov_anomaly = 0.50
+    else:
+        pov_anomaly = 0.0
+
+    # Decision tree combining Multi-bit, PoV Equalization, and Plane 0 Noise
+    if multibit_anomaly > 0.60:
+        risk_score = int(80 + multibit_anomaly * 19)
+    elif pov_anomaly > 0.50 and p0_randomness > 0.80:
+        risk_score = int(65 + pov_anomaly * 25)
+    elif multibit_anomaly > 0.30 or (pov_anomaly > 0.40 and p0_randomness > 0.50):
+        risk_score = int(35 + max(multibit_anomaly, pov_anomaly) * 30)
+    else:
+        risk_score = int(max(2, min(15, p0_randomness * 8 + multibit_anomaly * 10)))
+
+    risk_score = max(2, min(99, risk_score))
+
+    if risk_score >= 70:
+        verdict = "HIGH PROBABILITY OF STEGANOGRAPHY"
+        color = "#e50914"
+        detected_planes = sum(1 for c in plane_corrs if c < 0.55)
+        details = (
+            f"Artificial bit-plane randomization detected across {max(1, detected_planes)} LSB plane(s). "
+            f"Pairs-of-Values chi-square statistic ({avg_stat:.2f}/df) and zero spatial autocorrelation indicate cryptographic payload embedding."
+        )
+    elif risk_score >= 35:
+        verdict = "SUSPICIOUS BIT PATTERN DETECTED"
+        color = "#e67e22"
+        details = (
+            f"Moderate bit-plane equalization observed (&chi;&sup2;/df: {avg_stat:.2f}). "
+            "Statistical noise anomalies detected in the carrier pixel distribution."
+        )
+    else:
+        verdict = "NATURAL CARRIER (CLEAN)"
+        color = "#2ecc71"
+        details = (
+            f"Normal pair-of-values frequency variance (&chi;&sup2;/df: {avg_stat:.2f}) and natural spatial bit correlation. "
+            "No steganographic signature detected."
+        )
+
+    lsb_preview = generate_lsb_plane(image)
+
+    return {
+        "risk_score": risk_score,
+        "verdict": verdict,
+        "color": color,
+        "details": details,
+        "chi_square_per_df": {
+            "red": channel_stats[0],
+            "green": channel_stats[1],
+            "blue": channel_stats[2],
+            "average": round(avg_stat, 3),
+        },
+        "lsb_preview": lsb_preview,
+        "dimensions": f"{image.width}x{image.height}",
+    }
 
 
 def pov_chisq_per_df(pixels: list, channel: int, count: int) -> float:

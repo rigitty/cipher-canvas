@@ -6,11 +6,12 @@ from urllib.parse import quote
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from PIL import Image
 
 import capacity
 import crypto
+import detection
 import stego
 
 app = FastAPI(title="Cipher Canvas Engine", version="1.0.0")
@@ -21,7 +22,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Capacity-Bytes", "X-Bits-Written", "X-Filename", "X-Mode"],
+    expose_headers=["X-Capacity-Bytes", "X-Bits-Written", "X-Filename", "X-Bit-Depth"],
 )
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -31,7 +32,7 @@ def _load_image(data: bytes) -> Image.Image:
     try:
         image = Image.open(io.BytesIO(data))
         image.load()
-    except Exception as exc:
+    except Exception:
         raise HTTPException(status_code=400, detail="file is not a valid image")
     return image
 
@@ -51,13 +52,14 @@ async def encode(
     passphrase: str = Form(...),
     message: str = Form(""),
     message_file: UploadFile | None = File(None),
-    mode: str = Form("normal"),
+    bit_depth: int = Form(1),
 ) -> Response:
     data = await carrier.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="carrier exceeds 50 MB limit")
 
     image = _load_image(data)
+    bit_depth = max(1, min(4, int(bit_depth)))
 
     if message_file is not None:
         file_data = await message_file.read()
@@ -68,57 +70,31 @@ async def encode(
 
     payload = stego.pack_payload(filename, file_data)
     try:
-        if mode == "robust":
-            import robust
-
-            output_image, bits, meta = robust.encode_robust(passphrase, payload, image)
-            fmt = "JPEG"
-            media_type = "image/jpeg"
-        else:
-            output_image, bits = stego._embed_bytes(passphrase, payload, image)
-            fmt = "PNG"
-            media_type = "image/png"
+        output_image, bits = stego._embed_bytes(
+            passphrase, payload, image, bit_depth=bit_depth
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
     buffer = io.BytesIO()
-    if fmt == "JPEG":
-        output_image.save(buffer, "JPEG", quality=75, optimize=True)
-    else:
-        output_image.save(buffer, "PNG")
+    output_image.save(buffer, "PNG")
 
     width, height = image.size
     filename_bytes = len(filename.encode("utf-8"))
-    if mode == "robust":
-        import robust
-
-        total_bytes = width * height * 3 // 8
-        available = total_bytes - robust.INDEX_REPEAT * robust.INDEX_BYTES
-        limit = max(
-            0,
-            available // robust.MAX_COPIES
-            - stego.HEADER_SIZE
-            - crypto.SALT_SIZE
-            - crypto.NONCE_SIZE
-            - crypto.TAG_SIZE
-            - filename_bytes
-            - 1,
-        )
-    else:
-        limit = capacity.max_plaintext_bytes(
-            width, height, filename_length=filename_bytes
-        )
+    limit = capacity.max_plaintext_bytes(
+        width, height, filename_length=filename_bytes, bit_depth=bit_depth
+    )
 
     return Response(
         content=buffer.getvalue(),
-        media_type=media_type,
+        media_type="image/png",
         headers={
             "X-Capacity-Bytes": str(limit),
             "X-Bits-Written": str(bits),
             "X-Filename": quote(filename),
-            "X-Mode": mode,
+            "X-Bit-Depth": str(bit_depth),
         },
     )
 
@@ -129,20 +105,12 @@ def decode(
     passphrase: str = Form(...),
 ) -> Response:
     image = _load_image(carrier.file.read())
-    payload = None
     try:
-        import robust
-
-        payload = robust.decode_robust(passphrase, image)
-    except Exception:
-        pass
-    if payload is None:
-        try:
-            payload = stego._extract_bytes(passphrase, image)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+        payload = stego._extract_bytes(passphrase, image)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
     filename, file_data = stego.unpack_payload(payload)
     media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -151,6 +119,20 @@ def decode(
         media_type=media_type,
         headers={"X-Filename": quote(filename)},
     )
+
+
+@app.post("/api/inspect")
+async def inspect(image: UploadFile = File(...)) -> JSONResponse:
+    data = await image.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="image exceeds 50 MB limit")
+
+    loaded_image = _load_image(data)
+    try:
+        analysis = detection.analyze_image(loaded_image)
+        return JSONResponse(content=analysis)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"steganalysis failed: {exc}")
 
 
 def main() -> None:

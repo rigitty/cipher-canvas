@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "./DropZone.jsx";
 import CompareSlider from "./CompareSlider.jsx";
+import EntropyMeter from "./EntropyMeter.jsx";
 import { capacityBytes, encodeImage, isTauri, saveFileNative } from "../api.js";
 import { buildDiffCanvas, objectUrlFor } from "../imageDiff.js";
 
@@ -28,6 +29,7 @@ export default function EncodePanel() {
   const [message, setMessage] = useState("");
   const [messageFile, setMessageFile] = useState(null);
   const [passphrase, setPassphrase] = useState("");
+  const [bitDepth, setBitDepth] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
@@ -38,7 +40,8 @@ export default function EncodePanel() {
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState("");
   const downloadRef = useRef(null);
-const filenameLength =
+
+  const filenameLength =
     source === "file" && messageFile
       ? new TextEncoder().encode(messageFile.name).length
       : new TextEncoder().encode("message.txt").length;
@@ -49,11 +52,13 @@ const filenameLength =
         ? capacityBytes(
             carrierMeta.width,
             carrierMeta.height,
-            filenameLength
+            filenameLength,
+            bitDepth
           )
         : null,
-    [carrierMeta, filenameLength]
+    [carrierMeta, filenameLength, bitDepth]
   );
+
   useEffect(() => () => {
     if (originalUrl) URL.revokeObjectURL(originalUrl);
   }, [originalUrl]);
@@ -110,6 +115,7 @@ const filenameLength =
         message,
         passphrase,
         messageFile: source === "file" ? messageFile : null,
+        bitDepth,
       });
       setResult(res);
       const base = carrier.name.replace(/\.(png|jpg|jpeg|bmp|gif|webp)$/i, "") || "carrier";
@@ -147,6 +153,18 @@ const filenameLength =
     }
   };
 
+  const copyImageToClipboard = async () => {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ [result.blob.type || "image/png"]: result.blob }),
+      ]);
+      setSaveNote("image copied to clipboard!");
+      setTimeout(() => setSaveNote(""), 2500);
+    } catch (err) {
+      setSaveNote("clipboard write failed: " + err);
+    }
+  };
+
   const toggleDiff = async () => {
     if (diff) {
       setShowDiff(!showDiff);
@@ -177,7 +195,7 @@ const filenameLength =
                 {carrierMeta.width} &times; {carrierMeta.height}
               </span>
               <span className={overCapacity ? "meta-warn" : "meta-ok"}>
-                capacity {capacity} bytes
+                capacity {capacity} bytes ({bitDepth} LSB)
               </span>
             </div>
           )}
@@ -240,6 +258,30 @@ const filenameLength =
       </div>
 
       <section className="panel-section">
+        <div className="section-header-row">
+          <h2 className="section-title">BIT DEPTH &amp; CAPACITY SLIDER</h2>
+          <span className="bit-depth-badge">{bitDepth} LSB / CHANNEL</span>
+        </div>
+        <div className="slider-control-row">
+          <input
+            type="range"
+            min="1"
+            max="4"
+            step="1"
+            value={bitDepth}
+            onChange={(e) => setBitDepth(Number(e.target.value))}
+            className="capacity-slider"
+          />
+          <div className="slider-labels">
+            <span className={bitDepth === 1 ? "active" : ""}>1 LSB (Stealth / 100% Invisible)</span>
+            <span className={bitDepth === 2 ? "active" : ""}>2 LSB (High Capacity 2x)</span>
+            <span className={bitDepth === 3 ? "active" : ""}>3 LSB (Dense 3x)</span>
+            <span className={bitDepth === 4 ? "active" : ""}>4 LSB (Maximum 4x)</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel-section">
         <h2 className="section-title">PASSPHRASE</h2>
         <input
           type="password"
@@ -252,6 +294,7 @@ const filenameLength =
             setError("");
           }}
         />
+        <EntropyMeter passphrase={passphrase} />
         <button
           type="button"
           className="action-btn"
@@ -269,7 +312,13 @@ const filenameLength =
         <section className="panel-section result-box">
           <h2 className="section-title">RESULT</h2>
           <div className="result-content">
-            <img className="result-preview" src={result.url} alt="encoded carrier" />
+            <img
+              className="result-preview"
+              src={result.url}
+              alt="encoded carrier"
+              draggable={true}
+              title="Drag image directly to desktop or other applications"
+            />
             <div className="result-details">
               <p>
                 <span className="result-label">Bits written</span>
@@ -279,9 +328,12 @@ const filenameLength =
                 <span className="result-label">Payload bytes</span>
                 <span>{Math.floor(result.bits / 8)}</span>
               </p>
+              <p>
+                <span className="result-label">Bit Depth</span>
+                <span>{result.bitDepth || bitDepth} LSB / channel</span>
+              </p>
               <p className="result-note">
-                The output looks identical to the source. Only the least significant
-                bits were modified.
+                The output looks identical to the source. Alpha channel is protected and transparency is preserved.
               </p>
               <input
                 type="text"
@@ -289,25 +341,35 @@ const filenameLength =
                 value={savedName}
                 onChange={(e) => setSavedName(e.target.value)}
               />
-              {isTauri() ? (
+              <div className="button-group-row">
+                {isTauri() ? (
+                  <button
+                    type="button"
+                    className="action-btn"
+                    onClick={savePng}
+                    disabled={saving}
+                  >
+                    {saving ? "SAVING..." : "SAVE PNG"}
+                  </button>
+                ) : (
+                  <a
+                    ref={downloadRef}
+                    className="action-btn"
+                    href={result.url}
+                    download={savedName}
+                  >
+                    SAVE PNG
+                  </a>
+                )}
                 <button
                   type="button"
-                  className="action-btn"
-                  onClick={savePng}
-                  disabled={saving}
+                  className="ghost-btn"
+                  onClick={copyImageToClipboard}
+                  title="Copy encoded PNG image to system clipboard"
                 >
-                  {saving ? "SAVING..." : "SAVE PNG"}
+                  📋 COPY TO CLIPBOARD
                 </button>
-              ) : (
-                <a
-                  ref={downloadRef}
-                  className="action-btn"
-                  href={result.url}
-                  download={savedName}
-                >
-                  SAVE PNG
-                </a>
-              )}
+              </div>
               {saveNote && <div className="hint-box">{saveNote}</div>}
             </div>
           </div>
