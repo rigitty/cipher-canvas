@@ -30,6 +30,7 @@ dependencies = [
     "reedsolo>=1.7.0",
     "argon2-cffi>=23.1.0",
     "zstandard>=0.22.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
