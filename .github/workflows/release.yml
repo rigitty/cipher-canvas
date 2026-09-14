@@ -57,30 +57,33 @@ jobs:
           tagName: v__VERSION__
           releaseName: "Cipher Canvas v__VERSION__"
           releaseBody: |
-            <div align="center">
-              <img src="https://raw.githubusercontent.com/rigitty/cipher-canvas/main/web/public/logo.png" width="90" alt="Cipher Canvas Logo" />
-              <h2>Cipher Canvas v__VERSION__</h2>
-              <p><strong>Stealthy, secure, and robust image steganography for desktop.</strong></p>
-            </div>
+            <p align="center">
+              <img src="https://github.com/user-attachments/assets/00f16991-562d-40bb-942d-5d5f9f98eb77" width="100" alt="Cipher Canvas Logo" />
+            </p>
 
-            ---
+            ### >> What is Cipher Canvas ?
 
-            ### What is Cipher Canvas?
-            Cipher Canvas is a modern, lightweight desktop application designed for secure data concealment. It allows you to encrypt and seamlessly embed confidential files or messages inside everyday images without noticeable visual distortion or statistical anomalies.
+            Cipher Canvas is a desktop application designed for secure data concealment. It allows you to encrypt and seamlessly embed confidential files or messages inside everyday images without noticeable visual distortion or statistical anomalies.
 
-            ### Key Highlights
-            * **Authenticated Encryption**: Every payload is encrypted with **AES-256-GCM** prior to embedding. Passphrases are hardened using memory-intensive **Argon2id** key derivation to guard against GPU brute-force attacks.
-            * **Imperceptible Steganography**: PRNG-driven pseudorandom pixel distribution and LSB substitution preserve carrier image fidelity without detectable perceptual artifacts.
-            * **Tamper Resilience (FEC)**: Built-in **Reed-Solomon Forward Error Correction** safeguards hidden data against compression noise, cropping, and file degradation.
-            * **Multi-Carrier Sharding**: Automatically partition large confidential files across multiple carrier images using adaptive capacity-proportional allocation.
-            * **Quality Assurance Metrics**: Live perceptual fidelity scoring (**PSNR**, **SSIM**, **MSE**, and **BPP**) to verify zero perceptible distortion before saving or sharing.
-            ---
+            ### >> How It Works (Quick Guide)
 
-            ### Installation (Windows)
-            Download your preferred installer from the **Assets** section below:
-            * **`.exe` (Recommended)**: Setup wizard with automatic desktop and start menu shortcuts.
-            * **`.msi`**: Standard Windows Installer package for system-wide or silent deployments.
+            1. **Hide & Encrypt (Sender)**:
+               - Select a carrier image (PNG recommended) and the secret file or text you want to hide.
+               - Enter a secret passphrase. Cipher Canvas encrypts the payload using authenticated AES-256-GCM and embeds it into the image.
+               - Save or share the output image. To an outside observer, it looks like an ordinary picture.
 
-            > **Windows SmartScreen Note**: As this is an open-source release without an expensive commercial EV code-signing certificate, Windows SmartScreen may show an *"Unknown Publisher"* warning on first launch. Click **More info ➔ Run anyway** to proceed.
+            2. **Extract & Decrypt (Recipient)**:
+               - The recipient opens Cipher Canvas and selects the received image.
+               - Enter the **exact same secret passphrase** used during encryption.
+               - Cipher Canvas verifies and extracts the hidden file intact. (Without the correct passphrase, the data cannot be decrypted or detected).
+
+            ### >> Installation (Windows)
+
+            Download your preferred installer from the Assets section below:
+
+            • **.exe (Recommended)**: Setup wizard with automatic desktop and start menu shortcuts.  
+            • **.msi**: Standard Windows Installer package for system-wide or silent deployments.  
+
+            > (ℹ) **Windows SmartScreen Note**: As this is an open-source release without an expensive commercial EV code-signing certificate, Windows SmartScreen may show an "Unknown Publisher" warning on first launch. Click **More info ➔ Run anyway** to proceed.
           releaseDraft: false
           prerelease: false
