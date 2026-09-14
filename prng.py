@@ -1,60 +1,17 @@
-import hashlib
-import random
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+"""Compatibility proxy for cipher_engine.core.prng."""
 
-DEFAULT_PRNG_SALT = b"cipher-canvas-prng-domain-v2"
-PRNG_KDF_ROUNDS = 50_000
+from cipher_engine.core.prng import (
+    DEFAULT_PRNG_SALT,
+    PRNG_KDF_ROUNDS,
+    build_permutation,
+    derive_seed,
+    pick_slots,
+)
 
-
-def derive_seed(passphrase: str, domain_salt: bytes = DEFAULT_PRNG_SALT) -> int:
-    """Derives a cryptographically stretched 256-bit PRNG seed from passphrase with domain isolation."""
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=domain_salt,
-        iterations=PRNG_KDF_ROUNDS,
-    )
-    seed_buf = bytearray(kdf.derive(passphrase.encode("utf-8")))
-    try:
-        return int.from_bytes(seed_buf, "big")
-    finally:
-        for i in range(len(seed_buf)):
-            seed_buf[i] = 0
-
-
-def build_permutation(seed: int, slot_count: int) -> list[int]:
-    rng = random.Random(seed)
-    permutation = list(range(slot_count))
-    rng.shuffle(permutation)
-    return permutation
-
-
-def pick_slots(seed: int, slot_count: int, needed: int) -> list[int]:
-    permutation = build_permutation(seed, slot_count)
-    return permutation[:needed]
-
-
-def demo() -> None:
-    slot_count = 12
-    seed_a = derive_seed("correct horse battery staple")
-    seed_b = derive_seed("a different passphrase")
-
-    order_a = build_permutation(seed_a, slot_count)
-    order_b = build_permutation(seed_a, slot_count)
-    order_c = build_permutation(seed_b, slot_count)
-
-    print(f"seed A run 1: {order_a}")
-    print(f"seed A run 2: {order_b}   (same pass -> same order: {order_a == order_b})")
-    print(f"seed B run 1: {order_c}   (different pass -> different order)")
-
-    picked = pick_slots(seed_a, slot_count, 6)
-    occupied = [0] * slot_count
-    for slot in picked:
-        occupied[slot] = 1
-    print(f"first 6 slots : {picked}")
-    print(f"visual        : {occupied}   <- bits scattered, not sequential")
-
-
-if __name__ == "__main__":
-    demo()
+__all__ = [
+    "DEFAULT_PRNG_SALT",
+    "PRNG_KDF_ROUNDS",
+    "build_permutation",
+    "derive_seed",
+    "pick_slots",
+]
