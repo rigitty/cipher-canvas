@@ -4,6 +4,7 @@ import struct
 import uuid
 import zlib
 from typing import List, Tuple
+import numpy as np
 from PIL import Image
 
 from cipher_engine.core import capacity, crypto, stego
@@ -15,13 +16,18 @@ SHARD_HEADER_SIZE = struct.calcsize(SHARD_HEADER_FORMAT)  # 32 bytes
 
 def calculate_image_capacities(images: List[Image.Image], bit_depth: int = 1) -> List[int]:
     capacities = []
+    num_shards = len(images)
     for img in images:
         norm_img, is_rgba = stego._normalize_image(img)
-        w, h = norm_img.size
-        slots_count = w * h * 3
-        available_slots = max(0, slots_count - 72)
+        arr = np.array(norm_img, dtype=np.uint8)
+        slot_indices = stego._get_slot_indices(arr, is_rgba)
+        available_slots = len(slot_indices) - 72
+        if available_slots <= 0:
+            capacities.append(0)
+            continue
         max_sealed = (available_slots * bit_depth) // 8
-        usable = max(0, int((max_sealed - 64) / 1.45) - SHARD_HEADER_SIZE - 20)
+        shard_env = len(f"shard_{num_shards}_of_{num_shards}.bin".encode("utf-8")) + 1 + SHARD_HEADER_SIZE + 44
+        usable = max(0, max_sealed - shard_env - 16)
         capacities.append(usable)
     return capacities
 
@@ -32,11 +38,12 @@ def shard_payload(
     payload_data: bytes,
     carrier_images: List[Image.Image],
     bit_depth: int = 1,
+    compress: bool = False,
 ) -> List[Image.Image]:
     if len(carrier_images) < 2:
         raise ValueError("Multi-image sharding requires at least 2 carrier images.")
 
-    packed_payload = stego.pack_payload(filename, payload_data)
+    packed_payload = stego.pack_payload(filename, payload_data, compress=compress)
     total_size = len(packed_payload)
     crc = zlib.crc32(packed_payload) & 0xFFFFFFFF
     group_id = uuid.uuid4().bytes
@@ -49,16 +56,33 @@ def shard_payload(
             f"Payload too large for provided images ({total_size:,} bytes > total capacity {total_capacity:,} bytes)."
         )
 
-    chunk_size = math.ceil(total_size / num_shards)
+    # Check if any carrier is too small to participate
+    for idx, cap in enumerate(capacities):
+        if cap <= 0:
+            img = carrier_images[idx]
+            raise ValueError(
+                f"Carrier #{idx + 1} ({img.width}x{img.height}) is too small to store a shard header. "
+                f"Please choose a higher-resolution image."
+            )
+
+    # Capacity-proportional chunking: allocates shard sizes proportional to each carrier's capacity
     chunks = []
-    offset = 0
+    remaining_data = packed_payload
+    remaining_capacity = total_capacity
+
     for i in range(num_shards):
         if i == num_shards - 1:
-            chunk = packed_payload[offset:]
+            chunk = remaining_data
         else:
-            end = min(offset + chunk_size, total_size)
-            chunk = packed_payload[offset:end]
-            offset = end
+            cap = capacities[i]
+            target = int(math.floor(total_size * (cap / total_capacity))) if total_capacity > 0 else 0
+            # Ensure remainder doesn't exceed total capacity of future carriers
+            min_needed = max(0, len(remaining_data) - (remaining_capacity - cap))
+            target = max(target, min_needed)
+            target = max(0, min(target, cap, len(remaining_data)))
+            chunk = remaining_data[:target]
+            remaining_data = remaining_data[target:]
+            remaining_capacity -= cap
         chunks.append(chunk)
 
     stego_images = []
@@ -74,7 +98,7 @@ def shard_payload(
         )
         shard_data = header + chunk
         shard_filename = f"shard_{idx + 1}_of_{num_shards}.bin"
-        packed_shard = stego.pack_payload(shard_filename, shard_data)
+        packed_shard = stego.pack_payload(shard_filename, shard_data, compress=False)
 
         stego_img, _ = stego._embed_bytes(
             passphrase=passphrase,

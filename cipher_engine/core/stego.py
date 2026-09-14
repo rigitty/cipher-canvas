@@ -1,6 +1,7 @@
 import math
 import numpy as np
 from PIL import Image
+import zstandard
 
 from cipher_engine.core import crypto, lsb, prng
 
@@ -8,6 +9,8 @@ MAGIC = b"CSG2"
 MAGIC_V1 = b"CSGA"
 MAGIC_LEN = 4
 HEADER_SIZE = 9  # MAGIC (4) + bit_depth (1) + length (4)
+
+ZSTD_HEADER_PREFIX = b"ZSTD\x00"
 
 
 def bytes_to_bits(data: bytes) -> list[int]:
@@ -65,16 +68,37 @@ def chunked_bits_to_bytes(chunks: list[int], b: int, total_bytes: int) -> bytes:
     return bytes(out)
 
 
-def pack_payload(filename: str, data: bytes) -> bytes:
-    return filename.encode("utf-8") + b"\x00" + data
+def pack_payload(filename: str, data: bytes, compress: bool = False) -> bytes:
+    encoded_name = filename.encode("utf-8")
+    if compress and len(data) > 32:
+        try:
+            cctx = zstandard.ZstdCompressor(level=3)
+            compressed = cctx.compress(data)
+            if len(compressed) + len(ZSTD_HEADER_PREFIX) < len(data):
+                return encoded_name + b"\x00" + ZSTD_HEADER_PREFIX + compressed
+        except Exception:
+            pass
+    return encoded_name + b"\x00" + data
 
 
 def unpack_payload(payload: bytes) -> tuple[str, bytes]:
     parts = payload.split(b"\x00", 1)
     if len(parts) == 1:
-        return "message.txt", payload
-    filename = parts[0].decode("utf-8", errors="replace").strip() or "file.bin"
-    return filename, parts[1]
+        filename = "message.txt"
+        raw = payload
+    else:
+        filename = parts[0].decode("utf-8", errors="replace").strip() or "file.bin"
+        raw = parts[1]
+
+    if raw.startswith(ZSTD_HEADER_PREFIX):
+        try:
+            dctx = zstandard.ZstdDecompressor()
+            decompressed = dctx.decompress(raw[len(ZSTD_HEADER_PREFIX) :])
+            return filename, decompressed
+        except Exception:
+            pass
+
+    return filename, raw
 
 
 def _normalize_image(image: Image.Image) -> tuple[Image.Image, bool]:
@@ -181,10 +205,15 @@ def _extract_bytes(passphrase: str, image: Image.Image) -> bytes:
 
 
 def encode(
-    passphrase: str, message: str, carrier_path: str, output_path: str, bit_depth: int = 1
+    passphrase: str,
+    message: str,
+    carrier_path: str,
+    output_path: str,
+    bit_depth: int = 1,
+    compress: bool = False,
 ) -> int:
     image = Image.open(carrier_path)
-    payload = pack_payload("message.txt", message.encode("utf-8"))
+    payload = pack_payload("message.txt", message.encode("utf-8"), compress=compress)
     output_image, bits = _embed_bytes(passphrase, payload, image, bit_depth=bit_depth)
     output_image.save(output_path)
     return bits

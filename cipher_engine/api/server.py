@@ -61,6 +61,7 @@ def encode(
     message_file: UploadFile | None = File(None),
     bit_depth: int = Form(1),
     mode: str = Form("stealth"),
+    compress: bool = Form(True),
 ) -> Response:
     data = carrier.file.read()
     if len(data) > MAX_UPLOAD_BYTES:
@@ -81,7 +82,7 @@ def encode(
     if mode == "robust":
         # Robust DCT + Reed-Solomon Mode (JPEG/WhatsApp lossy resistant)
         try:
-            payload = stego.pack_payload(filename, file_data)
+            payload = stego.pack_payload(filename, file_data, compress=compress)
             result_img = robust.encode_image(passphrase, payload, image)
             buffer = io.BytesIO()
             result_img.save(buffer, "PNG")
@@ -105,7 +106,7 @@ def encode(
         )
 
     # Standard Stealth LSB Mode
-    payload = stego.pack_payload(filename, file_data)
+    payload = stego.pack_payload(filename, file_data, compress=compress)
     try:
         output_image, bits = stego._embed_bytes(
             passphrase, payload, image, bit_depth=bit_depth
@@ -143,6 +144,7 @@ def encode_shard(
     message: str = Form(""),
     message_file: UploadFile | None = File(None),
     bit_depth: int = Form(1),
+    compress: bool = Form(True),
 ) -> Response:
     if len(carriers) < 2:
         raise HTTPException(
@@ -172,6 +174,7 @@ def encode_shard(
             payload_data=file_data,
             carrier_images=images,
             bit_depth=bit_depth,
+            compress=compress,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
