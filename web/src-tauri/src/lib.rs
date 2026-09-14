@@ -106,8 +106,10 @@ pub fn run() {
         .manage(BackendState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![save_file, read_file_binary])
         .setup(|app| {
-            if let Some(icon) = app.default_window_icon() {
-                if let Some(win) = app.get_webview_window("main") {
+            if let Some(win) = app.get_webview_window("main") {
+                if let Ok(icon) = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png")) {
+                    let _ = win.set_icon(icon);
+                } else if let Some(icon) = app.default_window_icon() {
                     let _ = win.set_icon(icon.clone());
                 }
             }
