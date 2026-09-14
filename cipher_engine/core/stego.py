@@ -1,9 +1,10 @@
 import math
-import numpy as np
-from PIL import Image
-import zstandard
 
-from cipher_engine.core import crypto, lsb, prng
+import numpy as np
+import zstandard
+from PIL import Image
+
+from cipher_engine.core import crypto, prng
 
 MAGIC = b"CSG2"
 MAGIC_V1 = b"CSGA"

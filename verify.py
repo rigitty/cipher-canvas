@@ -1,4 +1,5 @@
 from PIL import Image
+
 import capacity
 import stego
 
@@ -176,6 +177,7 @@ def test_alpha_preservation() -> None:
 
 def test_robust_jpeg_resilience() -> None:
     import io
+
     import robust
 
     carrier_path = TEST_LOGO

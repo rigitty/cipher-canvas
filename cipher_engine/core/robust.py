@@ -1,7 +1,7 @@
 import numpy as np
+import reedsolo
 from PIL import Image
 from scipy.fftpack import dct, idct
-import reedsolo
 
 from cipher_engine.core import capacity, crypto, prng
 

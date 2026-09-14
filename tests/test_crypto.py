@@ -26,14 +26,14 @@ def test_tampered_ciphertext_rejected(passphrase: str):
     # Corrupt the last byte of the GCM authentication tag
     sealed[-1] ^= 0x01
 
-    with pytest.raises(Exception):
+    with pytest.raises((InvalidTag, ValueError)):
         crypto.open_sealed(passphrase, bytes(sealed))
 
 
 def test_wrong_passphrase_rejected(passphrase: str):
     message = b"Secret data"
     sealed = crypto.seal(passphrase, message)
-    with pytest.raises(Exception):
+    with pytest.raises((InvalidTag, ValueError)):
         crypto.open_sealed("wrong-passphrase-attempt", sealed)
 
 

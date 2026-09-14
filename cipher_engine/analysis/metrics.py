@@ -1,5 +1,5 @@
-import math
-from typing import Any, Dict
+from typing import Any
+
 import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter
@@ -87,7 +87,7 @@ def evaluate_quality(
     carrier: Image.Image,
     stego: Image.Image,
     bits_written: int = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generates a comprehensive scientific quality report comparing carrier vs stego image."""
     c_rgb = carrier.convert("RGB")
     s_rgb = stego.convert("RGB")

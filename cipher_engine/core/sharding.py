@@ -1,20 +1,19 @@
-import io
 import math
 import struct
 import uuid
 import zlib
-from typing import List, Tuple
+
 import numpy as np
 from PIL import Image
 
-from cipher_engine.core import capacity, crypto, stego
+from cipher_engine.core import stego
 
 SHARD_MAGIC = b"CCSH"  # Cipher Canvas Shard
 SHARD_HEADER_FORMAT = ">4s16sHHII"  # MAGIC(4), UUID(16), SHARD_IDX(2), TOTAL_SHARDS(2), CRC32(4), TOTAL_SIZE(4)
 SHARD_HEADER_SIZE = struct.calcsize(SHARD_HEADER_FORMAT)  # 32 bytes
 
 
-def calculate_image_capacities(images: List[Image.Image], bit_depth: int = 1) -> List[int]:
+def calculate_image_capacities(images: list[Image.Image], bit_depth: int = 1) -> list[int]:
     capacities = []
     num_shards = len(images)
     for img in images:
@@ -26,7 +25,7 @@ def calculate_image_capacities(images: List[Image.Image], bit_depth: int = 1) ->
             capacities.append(0)
             continue
         max_sealed = (available_slots * bit_depth) // 8
-        shard_env = len(f"shard_{num_shards}_of_{num_shards}.bin".encode("utf-8")) + 1 + SHARD_HEADER_SIZE + 44
+        shard_env = len(f"shard_{num_shards}_of_{num_shards}.bin".encode()) + 1 + SHARD_HEADER_SIZE + 44
         usable = max(0, max_sealed - shard_env - 16)
         capacities.append(usable)
     return capacities
@@ -36,10 +35,10 @@ def shard_payload(
     passphrase: str,
     filename: str,
     payload_data: bytes,
-    carrier_images: List[Image.Image],
+    carrier_images: list[Image.Image],
     bit_depth: int = 1,
     compress: bool = False,
-) -> List[Image.Image]:
+) -> list[Image.Image]:
     if len(carrier_images) < 2:
         raise ValueError("Multi-image sharding requires at least 2 carrier images.")
 
@@ -135,8 +134,8 @@ def inspect_shard(passphrase: str, image: Image.Image) -> dict | None:
 
 def assemble_shards(
     passphrase: str,
-    shard_images: List[Image.Image],
-) -> Tuple[str, bytes, dict]:
+    shard_images: list[Image.Image],
+) -> tuple[str, bytes, dict]:
     if not shard_images:
         raise ValueError("No shard images provided.")
 
@@ -167,7 +166,7 @@ def assemble_shards(
     first_group = extracted_shards[0]["group_id"]
     expected_total = extracted_shards[0]["total"]
     expected_crc = extracted_shards[0]["crc"]
-    expected_size = extracted_shards[0]["total_size"]
+    _expected_size = extracted_shards[0]["total_size"]
 
     for s in extracted_shards:
         if s["group_id"] != first_group:

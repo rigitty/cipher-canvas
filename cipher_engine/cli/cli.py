@@ -1,5 +1,6 @@
 import argparse
 import sys
+
 from PIL import Image
 
 from cipher_engine.core import capacity, stego
@@ -40,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "encode":
         if args.message_file:
-            with open(args.message_file, "r", encoding="utf-8-sig") as file:
+            with open(args.message_file, encoding="utf-8-sig") as file:
                 message = file.read()
         else:
             message = args.message

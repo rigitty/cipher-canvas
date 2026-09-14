@@ -1,4 +1,5 @@
 import io
+
 from fastapi.testclient import TestClient
 from PIL import Image
 

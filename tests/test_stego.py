@@ -1,6 +1,5 @@
-import io
-import pytest
 import numpy as np
+import pytest
 from PIL import Image
 
 from cipher_engine.core import capacity, stego

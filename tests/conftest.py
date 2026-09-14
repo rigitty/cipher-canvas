@@ -1,8 +1,6 @@
-import io
 import pytest
-import numpy as np
-from PIL import Image
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from cipher_engine.api.server import app
 
