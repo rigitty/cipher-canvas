@@ -57,15 +57,30 @@ jobs:
           tagName: v__VERSION__
           releaseName: "Cipher Canvas v__VERSION__"
           releaseBody: |
-            ## Cipher Canvas v__VERSION__ 🚀
-            
-            ### Windows Downloads
-            Please download the installer (`.msi` or `.exe`) from the assets section below.
-            
-            ### Highlights
-            - **Steganography Engine**: AES-256-GCM + Argon2id KDF + Zstandard compression.
-            - **Robustness**: Reed-Solomon Forward Error Correction (FEC) & multi-image proportional sharding.
-            - **Quality Analysis**: Full PSNR, SSIM, MSE, and BPP metric verification.
-            - **Desktop Experience**: Tauri v2 + React modern UI with native system integration.
+            <div align="center">
+              <img src="https://raw.githubusercontent.com/rigitty/cipher-canvas/main/web/public/logo.png" width="90" alt="Cipher Canvas Logo" />
+              <h2>Cipher Canvas v__VERSION__</h2>
+              <p><strong>Stealthy, secure, and robust image steganography for desktop.</strong></p>
+            </div>
+
+            ---
+
+            ### What is Cipher Canvas?
+            Cipher Canvas is a modern, lightweight desktop application designed for secure data concealment. It allows you to encrypt and seamlessly embed confidential files or messages inside everyday images without noticeable visual distortion or statistical anomalies.
+
+            ### Key Highlights
+            * **Authenticated Encryption**: Every payload is encrypted with **AES-256-GCM** prior to embedding. Passphrases are hardened using memory-intensive **Argon2id** key derivation to guard against GPU brute-force attacks.
+            * **Imperceptible Steganography**: PRNG-driven pseudorandom pixel distribution and LSB substitution preserve carrier image fidelity without detectable perceptual artifacts.
+            * **Tamper Resilience (FEC)**: Built-in **Reed-Solomon Forward Error Correction** safeguards hidden data against compression noise, cropping, and file degradation.
+            * **Multi-Carrier Sharding**: Automatically partition large confidential files across multiple carrier images using adaptive capacity-proportional allocation.
+            * **Quality Assurance Metrics**: Live perceptual fidelity scoring (**PSNR**, **SSIM**, **MSE**, and **BPP**) to verify zero perceptible distortion before saving or sharing.
+            ---
+
+            ### Installation (Windows)
+            Download your preferred installer from the **Assets** section below:
+            * **`.exe` (Recommended)**: Setup wizard with automatic desktop and start menu shortcuts.
+            * **`.msi`**: Standard Windows Installer package for system-wide or silent deployments.
+
+            > **Windows SmartScreen Note**: As this is an open-source release without an expensive commercial EV code-signing certificate, Windows SmartScreen may show an *"Unknown Publisher"* warning on first launch. Click **More info ➔ Run anyway** to proceed.
           releaseDraft: false
           prerelease: false

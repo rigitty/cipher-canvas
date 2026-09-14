@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "Secure steganography desktop app (AES-256-GCM + LSB + PRNG)"
 authors = ["Cipher Canvas"]
 edition = "2021"
+license = "MIT"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
