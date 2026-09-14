@@ -1,5 +1,5 @@
-"""Steganalysis and image anomaly detection."""
+"""Steganalysis, quality metrics, and anomaly detection."""
 
-from cipher_engine.analysis import detection
+from cipher_engine.analysis import detection, metrics
 
-__all__ = ["detection"]
+__all__ = ["detection", "metrics"]

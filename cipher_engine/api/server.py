@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 from PIL import Image
 import uvicorn
 
-from cipher_engine.analysis import detection
+from cipher_engine.analysis import detection, metrics
 from cipher_engine.core import capacity, crypto, robust, sharding, stego
 
 app = FastAPI(title="Cipher Canvas Engine", version="1.0.0")
@@ -29,6 +29,10 @@ app.add_middleware(
         "X-Bit-Depth",
         "X-Shard-Count",
         "X-Group-ID",
+        "X-PSNR-dB",
+        "X-SSIM",
+        "X-MSE",
+        "X-BPP",
     ],
 )
 
@@ -93,6 +97,7 @@ def encode(
             raise HTTPException(status_code=500, detail=str(exc))
 
         limit = capacity.max_robust_capacity_bytes(width, height)
+        quality = metrics.evaluate_quality(image, result_img, bits_written=len(file_data) * 8)
         return Response(
             content=out_bytes,
             media_type="image/png",
@@ -102,6 +107,10 @@ def encode(
                 "X-Filename": quote(filename),
                 "X-Bit-Depth": "DCT",
                 "X-Mode": "robust",
+                "X-PSNR-dB": str(quality["psnr_db"]),
+                "X-SSIM": str(quality["ssim"]),
+                "X-MSE": str(quality["mse"]),
+                "X-BPP": str(quality["bpp"]),
             },
         )
 
@@ -123,6 +132,7 @@ def encode(
     limit = capacity.max_plaintext_bytes(
         width, height, filename_length=filename_bytes, bit_depth=bit_depth
     )
+    quality = metrics.evaluate_quality(image, output_image, bits_written=bits)
 
     return Response(
         content=buffer.getvalue(),
@@ -133,6 +143,10 @@ def encode(
             "X-Filename": quote(filename),
             "X-Bit-Depth": str(bit_depth),
             "X-Mode": "stealth",
+            "X-PSNR-dB": str(quality["psnr_db"]),
+            "X-SSIM": str(quality["ssim"]),
+            "X-MSE": str(quality["mse"]),
+            "X-BPP": str(quality["bpp"]),
         },
     )
 
@@ -307,6 +321,25 @@ def inspect(image: UploadFile = File(...)) -> JSONResponse:
         return JSONResponse(content=analysis)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"steganalysis failed: {exc}")
+
+
+@app.post("/api/metrics/compare")
+def compare_images(
+    carrier: UploadFile = File(...),
+    stego: UploadFile = File(...),
+) -> JSONResponse:
+    c_bytes = carrier.file.read()
+    s_bytes = stego.file.read()
+    if len(c_bytes) > MAX_UPLOAD_BYTES or len(s_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="image exceeds 50 MB limit")
+
+    c_img = _load_image(c_bytes)
+    s_img = _load_image(s_bytes)
+    try:
+        report = metrics.evaluate_quality(c_img, s_img)
+        return JSONResponse(content=report)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"quality evaluation failed: {exc}")
 
 
 def _watch_parent_process(parent_pid: int | None = None) -> None:
