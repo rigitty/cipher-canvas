@@ -3,10 +3,20 @@
 
 a = Analysis(
     ['server.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=[
+        'cipher_engine',
+        'cipher_engine.core',
+        'cipher_engine.analysis',
+        'cipher_engine.api',
+        'cipher_engine.cli',
+        'uvicorn.logging',
+        'uvicorn.loops.auto',
+        'uvicorn.protocols.http.auto',
+        'uvicorn.lifespan.on',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
