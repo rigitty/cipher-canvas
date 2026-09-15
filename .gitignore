@@ -78,6 +78,7 @@ output*
 *.webp
 *.gif
 !assets/**/*
+!images/**/*
 !samples/**/*
 !web/src/assets/**/*
 !web/public/**/*

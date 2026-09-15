@@ -31,6 +31,29 @@ To any observer or automated scanner, the resulting image appears completely unt
 
 ---
 
+## Visual Demonstration
+
+<table width="100%">
+  <thead>
+    <tr>
+      <th width="50%" align="center">Raw Image</th>
+      <th width="50%" align="center">Encoded Image - 4.33 MB Hidden Video</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center">
+        <img src="images/mountain.jpg" width="100%" alt="Raw Image, 458 KB" />
+      </td>
+      <td align="center">
+        <img src="images/mountain-encoded.png" width="100%" alt="Encoded Image, 11.4 MB - 4.33 MB Hidden Content" />
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+---
+
 ## Core Capabilities
 
 - **Authenticated Encryption**: Every payload is encrypted with AES-256-GCM before embedding. Passphrases are hardened with Argon2id to resist brute-force attacks.
